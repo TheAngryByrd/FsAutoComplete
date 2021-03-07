@@ -29,15 +29,18 @@ let tests toolsPath =
     scriptPreviewTests toolsPath
     scriptEvictionTests toolsPath
     scriptProjectOptionsCacheTests toolsPath
-    dependencyManagerTests  toolsPath//Requires .Net 5 preview
+    dependencyManagerTests  toolsPath
     scriptGotoTests toolsPath
     interactiveDirectivesUnitTests
 
-    fsdnTest toolsPath
+    // FSDN service is down, disabling tests until that's resolved
+    // fsdnTest toolsPath
     uriTests
+    // fsharplint isn't updated to FCS 39, disabling tests until that's resolved
     // linterTests toolsPath
     formattingTests toolsPath
-    //fakeInteropTests toolsPath
+    // fake isn't updated to FCS 39, disabling tests until that's resolved
+    // fakeInteropTests toolsPath
     analyzerTests toolsPath
   ]
 
