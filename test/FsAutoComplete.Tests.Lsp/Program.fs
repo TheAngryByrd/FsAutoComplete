@@ -14,7 +14,7 @@ open FsAutoComplete.Tests.InteractiveDirectivesTests
 ///Global list of tests
 let tests toolsPath =
    testSequenced <| testList "lsp" [
-    // initTests
+    initTests toolsPath
     basicTests toolsPath
     codeLensTest toolsPath
     documentSymbolTest toolsPath
