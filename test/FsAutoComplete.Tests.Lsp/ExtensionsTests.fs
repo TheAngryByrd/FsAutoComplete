@@ -10,12 +10,12 @@ open Helpers
 open FsAutoComplete.Lsp
 
 
-let fsdnTest toolsPath =
+let fsdnTest toolsPath workspaceLoaderFactory =
 
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "FsdnTest")
-      let! (server, event) = serverInitialize path defaultConfigDto toolsPath
+      let! (server, event) = serverInitialize path defaultConfigDto toolsPath workspaceLoaderFactory
       do! waitForWorkspaceFinishedParsing event
       return server
     }
@@ -68,11 +68,11 @@ let uriTests =
  ]
 
 ///Tests for linter
-let linterTests toolsPath =
+let linterTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "LinterTest")
-      let! (server, event) = serverInitialize path {defaultConfigDto with Linter = Some true} toolsPath
+      let! (server, event) = serverInitialize path {defaultConfigDto with Linter = Some true} toolsPath workspaceLoaderFactory
       let! work = waitForParsedScript event |> Async.StartChild
       let projectPath = Path.Combine(path, "LinterTest.fsproj")
       do! parseProject projectPath server
@@ -245,11 +245,11 @@ let linterTests toolsPath =
   ]
 
 
-let formattingTests toolsPath =
+let formattingTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "Formatting")
-      let! (server, events) = serverInitialize path defaultConfigDto toolsPath
+      let! (server, events) = serverInitialize path defaultConfigDto toolsPath workspaceLoaderFactory
       return server, events, path
     }
     |> Async.Cache
@@ -311,7 +311,7 @@ let formattingTests toolsPath =
 //         ))
 //   ]
 
-let analyzerTests toolsPath =
+let analyzerTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "Analyzers")
@@ -326,7 +326,7 @@ let analyzerTests toolsPath =
       do! Helpers.runProcess (logDotnetRestore "RenameTest") path "dotnet" "restore"
           |> Async.map expectExitCodeZero
 
-      let! (server, events) = serverInitialize path analyzerEnabledConfig toolsPath
+      let! (server, events) = serverInitialize path analyzerEnabledConfig toolsPath workspaceLoaderFactory
       let scriptPath = Path.Combine(path, "Script.fs")
       do! Async.Sleep (TimeSpan.FromSeconds 5.)
       do! waitForWorkspaceFinishedParsing events

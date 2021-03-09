@@ -12,12 +12,12 @@ open FSharpx.Control.Observable
 open FSharp.Control.Reactive
 open System
 
-let scriptPreviewTests toolsPath =
+let scriptPreviewTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "PreviewScriptFeatures")
       let scriptPath = Path.Combine(path, "Script.fsx")
-      let! (server, events) = serverInitialize path { defaultConfigDto with FSIExtraParameters = Some [| "--langversion:preview" |] } toolsPath
+      let! (server, events) = serverInitialize path { defaultConfigDto with FSIExtraParameters = Some [| "--langversion:preview" |] } toolsPath  workspaceLoaderFactory
       do! waitForWorkspaceFinishedParsing events
       return server, events, scriptPath
     }
@@ -35,12 +35,12 @@ let scriptPreviewTests toolsPath =
     })
   ]
 
-let scriptEvictionTests toolsPath =
+let scriptEvictionTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "ScriptEviction")
       let scriptPath = Path.Combine(path, "Script.fsx")
-      let! (server, events) = serverInitialize path defaultConfigDto toolsPath
+      let! (server, events) = serverInitialize path defaultConfigDto toolsPath workspaceLoaderFactory
       do! waitForWorkspaceFinishedParsing events
       return server, events, scriptPath
     }
@@ -73,7 +73,7 @@ let scriptEvictionTests toolsPath =
     })
   ]
 
-let dependencyManagerTests toolsPath =
+let dependencyManagerTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let workingDir = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "DependencyManagement")
@@ -81,7 +81,7 @@ let dependencyManagerTests toolsPath =
       let dependencyManagerEnabledConfig =
         { defaultConfigDto with
             FSIExtraParameters = Some [| "--langversion:preview" |] }
-      let! (server, events) = serverInitialize workingDir dependencyManagerEnabledConfig toolsPath
+      let! (server, events) = serverInitialize workingDir dependencyManagerEnabledConfig toolsPath workspaceLoaderFactory
       do! waitForWorkspaceFinishedParsing events
       return server, events, workingDir
     }
@@ -115,13 +115,13 @@ let dependencyManagerTests toolsPath =
     })
   ]
 
-let scriptProjectOptionsCacheTests toolsPath =
+let scriptProjectOptionsCacheTests toolsPath workspaceLoaderFactory =
   let server = async {
     let workingDir = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "ScriptProjectOptsCache")
     let previewEnabledConfig =
       { defaultConfigDto with
           FSIExtraParameters = Some [| "--langversion:preview" |] }
-    let! (server, events) = serverInitialize workingDir previewEnabledConfig toolsPath
+    let! (server, events) = serverInitialize workingDir previewEnabledConfig toolsPath workspaceLoaderFactory
     let options = ResizeArray()
     server.ScriptFileProjectOptions.Add(options.Add)
     let scriptPath = Path.Combine(workingDir, "Script.fsx")
@@ -142,11 +142,11 @@ let scriptProjectOptionsCacheTests toolsPath =
     })
   ]
 
-let scriptGotoTests toolsPath =
+let scriptGotoTests toolsPath workspaceLoaderFactory =
   let server =
     async {
       let path = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "GoToTests")
-      let! (server, event) = serverInitialize path defaultConfigDto toolsPath
+      let! (server, event) = serverInitialize path defaultConfigDto toolsPath workspaceLoaderFactory
       do! waitForWorkspaceFinishedParsing event
       let scriptPath = Path.Combine(path, "Script.fsx")
       let tdop : DidOpenTextDocumentParams = { TextDocument = loadDocument scriptPath }

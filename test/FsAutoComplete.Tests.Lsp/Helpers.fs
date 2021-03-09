@@ -126,10 +126,10 @@ let logger = Expecto.Logging.Log.create "LSPTests"
 
 type ClientEvents = IObservable<string * obj>
 
-let createServer (toolsPath) =
+let createServer (toolsPath) workspaceLoaderFactory =
   let event = new System.Reactive.Subjects.ReplaySubject<_>()
   let client = FSharpLspClient ((fun name o -> event.OnNext (name ,o); AsyncLspResult.success ()), { new LanguageServerProtocol.Server.ClientRequestSender with member __.Send _ _ = AsyncLspResult.notImplemented})
-  let commands = Commands(FsAutoComplete.JsonSerializer.writeJson, false, toolsPath)
+  let commands = Commands(FsAutoComplete.JsonSerializer.writeJson, false, toolsPath, workspaceLoaderFactory)
   let originalFs = FSharp.Compiler.SourceCodeServices.FileSystemAutoOpens.FileSystem
   let fs = FsAutoComplete.FileSystem(originalFs, commands.Files.TryFind)
   FSharp.Compiler.SourceCodeServices.FileSystemAutoOpens.FileSystem <- fs
@@ -318,7 +318,7 @@ let runProcess (log: string -> unit) (workingDir: string) (exePath: string) (arg
 let inline expectExitCodeZero (exitCode, _) =
   Expect.equal exitCode 0 (sprintf "expected exit code zero but was %i" exitCode)
 
-let serverInitialize path (config: FSharpConfigDto) toolsPath = async {
+let serverInitialize path (config: FSharpConfigDto) toolsPath workspaceLoaderFactory = async {
   dotnetCleanup path
   let files = Directory.GetFiles(path)
 
@@ -326,7 +326,7 @@ let serverInitialize path (config: FSharpConfigDto) toolsPath = async {
     do! runProcess (logDotnetRestore ("Restore" + path)) path "dotnet" "restore"
         |> Async.map expectExitCodeZero
 
-  let server, event = createServer(toolsPath)
+  let server, event = createServer toolsPath workspaceLoaderFactory
 
   event
   |> Observable.add logEvent
