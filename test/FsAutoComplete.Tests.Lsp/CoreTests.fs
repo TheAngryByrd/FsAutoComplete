@@ -465,11 +465,13 @@ let autocompleteTest toolsPath =
 let renameTest toolsPath =
   let server =
     async {
-      let testDir = Path.Combine(__SOURCE_DIRECTORY__, "TestCases", "RenameTest")
-      let! (server, event) = serverInitialize testDir defaultConfigDto toolsPath
+      let testDir = Path.Combine(__SOURCE_DIRECTORY__,   "TestCases", "RenameTest")
+      let! (server, event) = serverInitialize testDir { defaultConfigDto with AutomaticWorkspaceInit = None } toolsPath
 
       let pathTest = Path.Combine(testDir, "Test.fs")
       let path = Path.Combine(testDir, "Program.fs")
+
+      do! server.FSharpWorkspaceLoad { TextDocuments = [| { Uri = Path.FilePathToUri (Path.Combine(testDir, "RenameTest.fsproj")) } |] } |> Async.Ignore
 
       do! waitForWorkspaceFinishedParsing event
 
