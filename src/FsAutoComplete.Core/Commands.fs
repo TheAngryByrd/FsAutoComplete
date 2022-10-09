@@ -76,16 +76,16 @@ module AsyncResult =
 
 [<RequireQualifiedAccess>]
 type NotificationEvent =
-  | ParseError of errors: FSharpDiagnostic[] * file: string<LocalPath>
+  | ParseError of errors: FSharpDiagnostic[] * file: string<LocalPath> * version: int option
   | Workspace of ProjectSystem.ProjectResponse
-  | AnalyzerMessage of messages: FSharp.Analyzers.SDK.Message[] * file: string<LocalPath>
-  | UnusedOpens of file: string<LocalPath> * opens: Range[]
+  | AnalyzerMessage of messages: FSharp.Analyzers.SDK.Message[] * file: string<LocalPath> * version: int option
+  | UnusedOpens of file: string<LocalPath>* version: int option  * opens: Range[]
   // | Lint of file: string<LocalPath> * warningsWithCodes: Lint.EnrichedLintWarning list
-  | UnusedDeclarations of file: string<LocalPath> * decls: range[]
-  | SimplifyNames of file: string<LocalPath> * names: SimplifyNames.SimplifiableRange[]
+  | UnusedDeclarations of file: string<LocalPath> * version: int option * decls: range[]
+  | SimplifyNames of file: string<LocalPath> * version: int option * names: SimplifyNames.SimplifiableRange[]
   | Canceled of errorMessage: string
-  | FileParsed of string<LocalPath>
-  | TestDetected of file: string<LocalPath> * tests: TestAdapter.TestAdapterEntry<range>[]
+  | FileParsed of string<LocalPath> * version: int option
+  | TestDetected of file: string<LocalPath> * version: int option * tests: TestAdapter.TestAdapterEntry<range>[]
 
 module Commands =
   let fantomasLogger = LogProvider.getLoggerByName "Fantomas"
@@ -895,7 +895,7 @@ module Commands =
     |> Array.sortBy startToken
 
 type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers: bool, rootPath: string option) =
-  let fileParsed = Event<FSharpParseFileResults>()
+  let fileParsed = Event<FSharpParseFileResults * int option>()
 
   let fileChecked = Event<ParseAndCheckResults * string<LocalPath> * int>()
 
@@ -972,7 +972,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
   //Fill declarations cache so we're able to return workspace symbols correctly
   do
     disposables.Add
-    <| fileParsed.Publish.Subscribe(fun parseRes ->
+    <| fileParsed.Publish.Subscribe(fun (parseRes, _) ->
       //TODO: this seems like a large amount of items to keep in-memory like this.
       // Is there a better structure?
       let decls = parseRes.GetNavigationItems().Declarations
@@ -994,10 +994,10 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
   //Diagnostics handler - Triggered by `CheckCore`
   do
     disposables.Add
-    <| fileChecked.Publish.Subscribe(fun (parseAndCheck, file, _) ->
+    <| fileChecked.Publish.Subscribe(fun (parseAndCheck, file, version) ->
       async {
         try
-          NotificationEvent.FileParsed file |> notify.Trigger
+          NotificationEvent.FileParsed (file, Some version) |> notify.Trigger
 
           let checkErrors = parseAndCheck.GetParseResults.Diagnostics
 
@@ -1008,7 +1008,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
             |> Array.distinctBy (fun e ->
               e.Severity, e.ErrorNumber, e.StartLine, e.StartColumn, e.EndLine, e.EndColumn, e.Message)
 
-          (errors, file) |> NotificationEvent.ParseError |> notify.Trigger
+          (errors,file ,Some version) |> NotificationEvent.ParseError |> notify.Trigger
         with _ ->
           ()
       }
@@ -1017,7 +1017,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
   //Analyzers handler - Triggered by `CheckCore`
   do
     disposables.Add
-    <| fileChecked.Publish.Subscribe(fun (parseAndCheck, file, _) ->
+    <| fileChecked.Publish.Subscribe(fun (parseAndCheck, file, version) ->
       async {
         if hasAnalyzers then
           try
@@ -1041,7 +1041,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
                     parseAndCheck.GetAllEntities
                   )
 
-                (res, file) |> NotificationEvent.AnalyzerMessage |> notify.Trigger
+                (res, file, Some version) |> NotificationEvent.AnalyzerMessage |> notify.Trigger
 
                 Loggers.analyzers.info (
                   Log.setMessage "end analysis of {file}"
@@ -1074,7 +1074,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
     //Test detection handler
     do
       disposables.Add
-      <| fileParsed.Publish.Subscribe(fun parseResults ->
+      <| fileParsed.Publish.Subscribe(fun (parseResults, version) ->
         commandsLogger.info (
           Log.setMessage "Test Detection of {file} started"
           >> Log.addContextDestructured "file" parseResults.FileName
@@ -1105,7 +1105,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
             >> Log.addContextDestructured "res" res
           )
 
-          NotificationEvent.TestDetected(fn, res |> List.toArray) |> notify.Trigger)
+          NotificationEvent.TestDetected(fn, version, res |> List.toArray) |> notify.Trigger)
 
   let parseFilesInTheBackground files =
     async {
@@ -1141,7 +1141,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
             async {
               let! opts = loopForProjOpts file
               let! parseRes = checker.ParseFile(file, source, opts)
-              fileParsed.Trigger parseRes
+              fileParsed.Trigger (parseRes, None)
             }
             |> Async.Start
         with ex ->
@@ -1542,7 +1542,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
       | Ok parseAndCheck ->
         do lastCheckResult <- Some parseAndCheck
         do state.SetLastCheckedVersion fileName version
-        do fileParsed.Trigger parseAndCheck.GetParseResults
+        do fileParsed.Trigger (parseAndCheck.GetParseResults, Some version)
         do fileChecked.Trigger(parseAndCheck, fileName, version)
       | Error e -> ()
     }
@@ -1950,7 +1950,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
       return CoreResponse.Res response
     }
 
-  member x.CheckUnusedDeclarations(file: string<LocalPath>) : Async<unit> =
+  member x.CheckUnusedDeclarations(file: string<LocalPath>, version) : Async<unit> =
     asyncResult {
       let isScript = Utils.isAScript (UMX.untag file)
 
@@ -1964,11 +1964,11 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
         let! unused = UnusedDeclarations.getUnusedDeclarations (tyRes.GetCheckResults, isScript)
         let unused = unused |> Seq.toArray
 
-        notify.Trigger(NotificationEvent.UnusedDeclarations(file, unused))
+        notify.Trigger(NotificationEvent.UnusedDeclarations(file, version, unused))
     }
     |> Async.Ignore<Result<unit, _>>
 
-  member x.CheckSimplifiedNames file : Async<unit> =
+  member x.CheckSimplifiedNames (file, version) : Async<unit> =
     asyncResult {
       let! (opts, source) = state.TryGetFileCheckerOptionsWithLines file
 
@@ -1982,13 +1982,13 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
 
         let! simplified = SimplifyNames.getSimplifiableNames (tyRes.GetCheckResults, getSourceLine)
         let simplified = Array.ofSeq simplified
-        notify.Trigger(NotificationEvent.SimplifyNames(file, simplified))
+        notify.Trigger(NotificationEvent.SimplifyNames(file, version, simplified))
     }
     |> Async.Ignore<Result<unit, _>>
     |> x.AsCancellable file
     |> AsyncResult.recoverCancellationIgnore
 
-  member x.CheckUnusedOpens file : Async<unit> =
+  member x.CheckUnusedOpens (file, version) : Async<unit> =
     asyncResult {
       let! (opts, source) = state.TryGetFileCheckerOptionsWithLines file
 
@@ -1998,7 +1998,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
         let! unused =
           UnusedOpens.getUnusedOpens (tyRes.GetCheckResults, (fun i -> (source: ISourceText).GetLineString(i - 1)))
 
-        notify.Trigger(NotificationEvent.UnusedOpens(file, (unused |> List.toArray)))
+        notify.Trigger(NotificationEvent.UnusedOpens(file, version, (unused |> List.toArray)))
 
     }
     |> Async.Ignore<Result<unit, _>>

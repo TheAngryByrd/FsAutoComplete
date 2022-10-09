@@ -31,7 +31,8 @@ let testTimeout =
 Environment.SetEnvironmentVariable("FSAC_WORKSPACELOAD_DELAY", "250")
 
 let loaders =
-  [ "Ionide WorkspaceLoader", WorkspaceLoader.Create
+  [
+    "Ionide WorkspaceLoader", WorkspaceLoader.Create
     // "MSBuild Project Graph WorkspaceLoader", WorkspaceLoaderViaProjectGraph.Create
     ]
 
@@ -42,7 +43,6 @@ let fsharpLspServerFactory toolsPath workspaceLoaderFactory =
 
   let createServer () =
     FsAutoComplete.State.Initial toolsPath testRunDir workspaceLoaderFactory
-
   Helpers.createServer createServer
 
 let adaptiveLspServerFactory toolsPath workspaceLoaderFactory =
@@ -50,8 +50,8 @@ let adaptiveLspServerFactory toolsPath workspaceLoaderFactory =
 
 let lspServers =
   [
-    "FSharpLspServer", fsharpLspServerFactory
-    // "AdaptiveLspServer", adaptiveLspServerFactory
+    // "FSharpLspServer", fsharpLspServerFactory
+    "AdaptiveLspServer", adaptiveLspServerFactory
     ]
 
 let mutable toolsPath =
@@ -93,7 +93,8 @@ let lspTests =
               uriTests
               //linterTests createServer
               formattingTests createServer
-              analyzerTests createServer // stalling on adaptive
+              if lspName <> "AdaptiveLspServer" then
+                analyzerTests createServer // stalling on adaptive
               signatureTests createServer
               SignatureHelp.tests createServer
               CodeFixTests.Tests.tests createServer
@@ -101,7 +102,8 @@ let lspTests =
               GoTo.tests createServer
               FindReferences.tests createServer
               InfoPanelTests.docFormattingTest createServer
-              DetectUnitTests.tests createServer //stalling on adaptive
+              if lspName <> "AdaptiveLspServer" then
+                DetectUnitTests.tests createServer //stalling on adaptive
               XmlDocumentationGeneration.tests createServer
               InlayHintTests.tests createServer
               DependentFileChecking.tests createServer
@@ -144,7 +146,7 @@ let main args =
         | Some "info" -> Logging.LogLevel.Info
         | Some "verbose" -> Logging.LogLevel.Verbose
         | Some "debug" -> Logging.LogLevel.Debug
-        | _ -> Logging.LogLevel.Info
+        | _ -> Logging.LogLevel.Debug
 
     let args =
       args
@@ -152,7 +154,7 @@ let main args =
       |> Array.filter (fun arg -> not <| arg.StartsWith logMarker)
 
     logLevel, args
-
+  let logLevel = Logging.LogLevel.Error
   let expectoToSerilogLevel =
     function
     | Logging.LogLevel.Debug -> LogEventLevel.Debug
@@ -199,6 +201,7 @@ let main args =
       .Enrich.FromLogContext()
       .MinimumLevel.ControlledBy(switch)
       .Filter.ByExcluding(Matching.FromSource("FileSystem"))
+      .Filter.ByExcluding(Matching.FromSource("Opts"))
       .Filter.ByExcluding(sourcesToExclude)
 
       .Destructure
@@ -223,8 +226,8 @@ let main args =
       .CreateLogger() // make it so that every console log is logged to stderr
 
   // uncomment these next two lines if you want verbose output from the LSP server _during_ your tests
-  Serilog.Log.Logger <- serilogLogger
-  LogProvider.setLoggerProvider (Providers.SerilogProvider.create ())
+  // Serilog.Log.Logger <- serilogLogger
+  // LogProvider.setLoggerProvider (Providers.SerilogProvider.create ())
 
   let fixedUpArgs = args |> Array.except argsToRemove
 
@@ -234,6 +237,7 @@ let main args =
     { defaultConfig with
         // failOnFocusedTests = true
         printer = Expecto.Impl.TestPrinters.summaryPrinter defaultConfig.printer
-        verbosity = logLevel }
+        verbosity = logLevel
+      }
 
   runTestsWithArgsAndCancel cts.Token config fixedUpArgs tests

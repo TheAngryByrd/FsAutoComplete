@@ -138,14 +138,15 @@ type Async =
 let logger = lazy Serilog.Log.Logger.ForContext("SourceContext", "LSPTests")
 
 type Cacher<'t> = System.Reactive.Subjects.ReplaySubject<'t>
-type ClientEvents = IObservable<string * obj>
+type ClientEvents = IObservable<string * DateTime * obj>
 
 module Range =
   let rangeContainsPos (range: Range) (pos: Position) = range.Start <= pos && pos <= range.End
 
 let record (cacher: Cacher<_>) =
-  fun name payload ->
-    cacher.OnNext(name, payload)
+  fun (name: string) payload ->
+    logger.Value.Debug("Recorded event : {name}", name)
+    cacher.OnNext(name, DateTime.Now, payload)
     AsyncLspResult.success Unchecked.defaultof<_>
 
 let createServer (state: unit -> State) =
@@ -366,8 +367,8 @@ open FsAutoComplete.CommandResponse
 open CliWrap
 open CliWrap.Buffered
 
-let logEvent (name, payload) =
-  logger.Value.Debug("{name}: {payload}", name, payload)
+let logEvent (name, dt, payload) =
+  logger.Value.Debug("{name} - {recordedTime}: {payload}", name, dt, payload)
 
 let logDotnetRestore section line =
   if not (String.IsNullOrWhiteSpace(line)) then
@@ -420,7 +421,6 @@ let serverInitialize path (config: FSharpConfigDto) createServer =
       do! dotnetRestore path
 
     let (server: IFSharpLspServer), clientNotifications = createServer ()
-    logger.Value.Error("LOLOLOLOL")
     clientNotifications |> Observable.add logEvent
 
     let p: InitializeParams =
@@ -473,7 +473,7 @@ let (|UnwrappedPlainNotification|_|) eventType (notification: PlainNotification)
 let internal defaultTimeout = TimeSpan.FromSeconds 10.0
 
 let waitForWorkspaceFinishedParsing (events: ClientEvents) =
-  let chooser (name, payload) =
+  let chooser (name, _, payload) =
     match name with
     | "fsharp/notifyWorkspace" ->
       match unbox payload with
@@ -493,12 +493,12 @@ let waitForWorkspaceFinishedParsing (events: ClientEvents) =
   |> Observable.timeoutSpan defaultTimeout
   |> Async.AwaitObservable
 
-let private typedEvents<'t> (typ: string) : IObservable<string * obj> -> IObservable<'t> =
-  Observable.choose (fun (typ', _o) -> if typ' = typ then Some(unbox _o) else None)
+let private typedEvents<'t> (typ: string) : IObservable<string * DateTime * obj> -> IObservable<DateTime * 't> =
+  Observable.choose (fun (typ', dt , _o) -> if typ' = typ then Some(dt, unbox _o) else None)
 
 let private payloadAs<'t> = Observable.map (fun (_typ, o) -> unbox<'t> o)
 
-let private getDiagnosticsEvents: IObservable<string * obj> -> IObservable<_> =
+let private getDiagnosticsEvents: IObservable<string * DateTime * obj> -> IObservable<_> =
   typedEvents<Ionide.LanguageServerProtocol.Types.PublishDiagnosticsParams> "textDocument/publishDiagnostics"
 
 let private fileName (u: DocumentUri) =
@@ -506,7 +506,7 @@ let private fileName (u: DocumentUri) =
 
 /// note that the files here are intended to be the filename only., not the full URI.
 let private matchFiles (files: string Set) =
-  Observable.choose (fun (p: Ionide.LanguageServerProtocol.Types.PublishDiagnosticsParams) ->
+  Observable.choose (fun (_, p: Ionide.LanguageServerProtocol.Types.PublishDiagnosticsParams) ->
     let filename = fileName p.Uri
 
     if Set.contains filename files then
@@ -514,13 +514,13 @@ let private matchFiles (files: string Set) =
     else
       None)
 
-let workspaceEdits: IObservable<string * obj> -> IObservable<_> =
+let workspaceEdits: IObservable<string * DateTime * obj> -> IObservable<_> =
   typedEvents<ApplyWorkspaceEditParams> "workspace/applyEdit"
 
 let editsFor (file: string) =
   let fileAsUri = Path.FilePathToUri file
 
-  Observable.choose (fun (p: ApplyWorkspaceEditParams) ->
+  Observable.choose (fun (_, p: ApplyWorkspaceEditParams) ->
     let edits = p.Edit.DocumentChanges.Value
 
     let forFile =
@@ -543,7 +543,7 @@ let fileDiagnosticsForUri (uri: string) =
   logger.Value.Information("waiting for events on file {file}", uri)
 
   getDiagnosticsEvents
-  >> Observable.choose (fun n -> if n.Uri = uri then Some n.Diagnostics else None)
+  >> Observable.choose (fun (_, n) -> if n.Uri = uri then Some n.Diagnostics else None)
 
 let diagnosticsFromSource (desiredSource: String) =
   Observable.choose (fun (diags: Diagnostic[]) ->
@@ -585,15 +585,15 @@ let waitForCompilerDiagnosticsForFile file =
 let waitForParsedScript (event: ClientEvents) =
   event
   |> typedEvents<Ionide.LanguageServerProtocol.Types.PublishDiagnosticsParams> "textDocument/publishDiagnostics"
-  |> Observable.choose (fun n ->
+  |> Observable.choose (fun (_, n) ->
     let filename = n.Uri.Replace('\\', '/').Split('/') |> Array.last
 
     if filename = "Script.fs" then Some n else None)
   |> Async.AwaitObservable
 
-let waitForTestDetected (fileName: string) (events: ClientEvents) : Async<TestDetectedNotification> =
+let waitForTestDetected (fileName: string) (events: ClientEvents) : Async<DateTime * TestDetectedNotification> =
   typedEvents<TestDetectedNotification> "fsharp/testDetected" events
-  |> Observable.filter (fun (tdn: TestDetectedNotification) ->
+  |> Observable.filter (fun (_, tdn: TestDetectedNotification) ->
     let testNotificationFileName = Path.GetFileName(tdn.File)
     testNotificationFileName = fileName)
   |> Async.AwaitObservable

@@ -1331,7 +1331,7 @@ let private renameUnusedValue state =
         """
         (Diagnostics.acceptAll)
         selectPrefix
-  
+
     testCaseAsync "replace doesn't trigger for function" <|
       CodeFix.checkNotApplicable server
         """
@@ -1370,8 +1370,8 @@ let private replaceWithSuggestionTests state =
     let selectCodeFix replacement = CodeFix.withTitle (ReplaceWithSuggestion.title replacement)
     let validateDiags (diags: Diagnostic[]) =
       Diagnostics.expectCode "39" diags
-      Expect.exists 
-        diags 
+      Expect.exists
+        diags
         (fun (d: Diagnostic) -> d.Message.Contains "Maybe you want one of the following:")
         "Diagnostic with code 39 should suggest name"
     testCaseAsync "can change Min to min" <|

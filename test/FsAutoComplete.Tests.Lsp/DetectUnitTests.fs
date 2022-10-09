@@ -18,7 +18,8 @@ let tests state =
       let tdop: DidOpenTextDocumentParams = { TextDocument = loadDocument path }
       do! server.TextDocumentDidOpen tdop
       let! _diagnostics = waitForParseResultsForFile fileName events
-      return! waitForTestDetected fileName events
+      let! (_, result) =  waitForTestDetected fileName events
+      return result
     }
     |> Async.Cache
 

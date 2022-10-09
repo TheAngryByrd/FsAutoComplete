@@ -11,6 +11,7 @@ open FsAutoComplete.LspHelpers
 open FsAutoComplete.CodeFix
 open FsAutoComplete.CodeFix.Types
 open FsAutoComplete.Logging
+open FsAutoComplete.Logging.Types
 open Ionide.LanguageServerProtocol
 open Ionide.LanguageServerProtocol.Types.LspResult
 open Ionide.LanguageServerProtocol.Server
@@ -52,13 +53,22 @@ module AsyncResult =
 
 
 type DiagnosticMessage =
-  | Add of source: string * diags: Diagnostic[]
-  | Clear of source: string
+  | Add of source: string * verison: DocumentVersion * diags: Diagnostic[] * finished : AsyncReplyChannel<unit>
+  | Clear of source: string  * verison: DocumentVersion * finished: AsyncReplyChannel<unit>
 
 /// a type that handles bookkeeping for sending file diagnostics.  It will debounce calls and handle sending diagnostics via the configured function when safe
-type DiagnosticCollection(sendDiagnostics: DocumentUri -> Diagnostic[] -> Async<unit>) =
-  let send uri (diags: Map<string, Diagnostic[]>) =
-    Map.toArray diags |> Array.collect snd |> sendDiagnostics uri
+type DiagnosticCollection(sendDiagnostics: DocumentUri -> DocumentVersion -> Diagnostic[] -> Async<unit>) =
+  let logger = LogProvider.getLoggerFor<DiagnosticCollection>()
+  let send uri (diags: Map<string, DocumentVersion * Diagnostic[]>) =
+    Map.toArray diags
+    |> Array.map snd
+    |> Array.groupBy fst
+    |> Array.map(fun (key, groups) ->
+      key, groups |> Array.collect(snd)
+    )
+    |> Array.map(fun (version, diags) -> sendDiagnostics uri version diags)
+    |> Async.Sequential
+    |> Async.Ignore<unit array>
 
   let agents =
     System.Collections.Concurrent.ConcurrentDictionary<DocumentUri, MailboxProcessor<DiagnosticMessage> * CancellationTokenSource>
@@ -79,16 +89,18 @@ type DiagnosticCollection(sendDiagnostics: DocumentUri -> Diagnostic[] -> Async<
     let mailbox =
       MailboxProcessor.Start(
         (fun inbox ->
-          let rec loop (state: Map<string, Diagnostic[]>) =
+          let rec loop (state: Map<string, DocumentVersion*Diagnostic[]>) =
             async {
               match! inbox.Receive() with
-              | Add (source, diags) ->
-                let newState = state |> Map.add source diags
+              | Add (source, version, diags, reply) ->
+                let newState = state |> Map.add source (version, diags)
                 do! send uri newState
+                reply.Reply ()
                 return! loop newState
-              | Clear source ->
-                let newState = state |> Map.remove source
+              | Clear (source, version, reply) ->
+                let newState = state |> Map.add source (version, Array.empty)
                 do! send uri newState
+                reply.Reply ()
                 return! loop newState
             }
 
@@ -116,20 +128,28 @@ type DiagnosticCollection(sendDiagnostics: DocumentUri -> Diagnostic[] -> Async<
     )
     |> fst
 
-  member x.SetFor(fileUri: DocumentUri, kind: string, values: Diagnostic[]) =
+  member x.SetFor(fileUri: DocumentUri, version: DocumentVersion, kind: string, values: Diagnostic[]) =
+    logger.debug(
+      Log.setMessage "SetFor {file} - {version} - {kind} - {values}"
+      >> Log.addContextDestructured "file" fileUri
+      >> Log.addContextDestructured "version" version
+      >> Log.addContextDestructured "kind" kind
+      >> Log.addContextDestructured "values" values
+    )
     let mailbox = getOrAddAgent fileUri
 
     match values with
-    | [||] -> mailbox.Post(Clear kind)
-    | values -> mailbox.Post(Add(kind, values))
+
+    | [||] -> mailbox.PostAndAsyncReply(fun r -> Clear (kind, version, r))
+    | values -> mailbox.PostAndAsyncReply(fun r -> Add(kind, version, values, r))
 
   member x.ClearFor(fileUri: DocumentUri) =
     removeAgent fileUri
-    sendDiagnostics fileUri [||] |> Async.Start
+    sendDiagnostics fileUri None [||]
 
-  member x.ClearFor(fileUri: DocumentUri, kind: string) =
+  member x.ClearFor(fileUri: DocumentUri, kind: string, version : int option) =
     let mailbox = getOrAddAgent fileUri
-    mailbox.Post(Clear kind)
+    mailbox.PostAndAsyncReply(fun r -> Clear (kind, version, r))
 
   interface IDisposable with
     member x.Dispose() =

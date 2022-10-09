@@ -1057,7 +1057,7 @@ let private paramHintTests state =
         $|f 42$|
         """
            []
-
+      testSequenced <|
       testList
         "operator"
         [ testList
@@ -1759,7 +1759,7 @@ let explicitTypeInfoTests =
 
   let testExplicitType textWithCursor expected =
     testExplicitType' textWithCursor (Some expected)
-
+  testSequenced <|
   testList
     "detect type and parens"
     [ testList
@@ -1776,7 +1776,7 @@ let explicitTypeInfoTests =
               ()
             """
                    ExplicitType.Invalid ] ]
-      testSequenced <|
+
       testList
         "Bindings"
         [ testList

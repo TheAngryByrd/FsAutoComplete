@@ -113,10 +113,14 @@ module Server =
       do! server.Server.Shutdown()
     }
 
+  let getNewVersion =
+    let mutable cached = 0
+    fun () ->
+      Threading.Interlocked.Increment(&cached)
   let private createDocument uri server =
     { Server = server
       Uri = uri
-      Version = 0 }
+      Version = getNewVersion () }
 
   let private untitledDocUrif = sprintf "untitled:Untitled-%i"
 
@@ -134,6 +138,20 @@ module Server =
         |> createDocument (server |> nextUntitledDocUri)
 
       let! diags = doc |> Document.openWith initialText
+
+      return (doc, diags)
+    }
+
+
+  let createUntitledDocument2 predicate initialText (server: CachedServer) =
+    async {
+      let! server = server
+
+      let doc =
+        server
+        |> createDocument (server |> nextUntitledDocUri)
+
+      let! diags = doc |> Document.openWith2 predicate initialText
 
       return (doc, diags)
     }
@@ -199,14 +217,34 @@ module Server =
       return (doc, diags)
     }
 
+  let openDocumentWithText2 predicate path (initialText: string) (server: CachedServer) =
+    async {
+      let! server = server
+      assert (server.RootPath |> Option.isSome)
+
+      let fullPath =
+        Path.Combine(server.RootPath.Value, path)
+        |> Utils.normalizePath
+        |> FSharp.UMX.UMX.untag
+
+      let doc =
+        server
+        |> createDocument (Path.FilePathToUri fullPath)
+
+      let! diags = doc |> Document.openWith2 predicate initialText
+
+      return (doc, diags)
+    }
+
 module Document =
   open System.Reactive.Linq
   open System.Threading.Tasks
+  open System.Reactive.Threading.Tasks
 
-  let private typedEvents<'t> typ : _ -> System.IObservable<'t> =
-    Observable.choose (fun (typ', _o) ->
+  let private typedEvents<'t> typ : _ -> System.IObservable<DateTime * 't> =
+    Observable.choose (fun (typ', dt, _o) ->
       if typ' = typ then
-        Some(unbox _o)
+        Some(dt, unbox _o)
       else
         None)
 
@@ -218,9 +256,15 @@ module Document =
   let diagnosticsStream (doc: Document) =
     doc.Server.Events
     |> typedEvents<PublishDiagnosticsParams> "textDocument/publishDiagnostics"
-    |> Observable.choose (fun n ->
-      if n.Uri = doc.Uri then
-        Some n.Diagnostics
+    |> Observable.choose (fun (dt,n) ->
+      logger.debug(
+        Log.setMessageI $"diagnosticsStream : {n.Uri:eventUri} = {doc.Uri:docUri} {n.Uri = doc.Uri:test}"
+      )
+      logger.debug(
+        Log.setMessageI $"diagnosticsStream : {n.Version:eventVersion} = {doc.Version:docVersion} {n.Version = Some doc.Version:test}"
+      )
+      if n.Uri = doc.Uri && n.Version = Some doc.Version then
+        Some (dt, n.Diagnostics)
       else
         None)
 
@@ -228,7 +272,11 @@ module Document =
   let analyzedStream (doc: Document) =
     doc.Server.Events
     |> typedEvents<DocumentAnalyzedNotification> "fsharp/documentAnalyzed"
-    |> Observable.filter (fun n -> n.TextDocument.Uri = doc.Uri)
+    |> Observable.filter (fun (_,n) ->
+      logger.trace(
+        Log.setMessageI $"analyzedStream : {n.TextDocument.Uri:eventUri} = {doc.Uri:docUri} {n.TextDocument.Uri = doc.Uri:test}"
+      )
+      n.TextDocument.Uri = doc.Uri)
 
 
   /// in ms
@@ -284,33 +332,109 @@ module Document =
   /// -> All past `documentAnalyzed` events and their diags are all received at once
   /// -> waiting a bit after a version-specific `documentAnalyzed` always returns latest diags.
   //ENHANCEMENT: Send `publishDiagnostics` with Doc Version (LSP `3.15.0`) -> can correlate `documentAnalyzed` and `publishDiagnostics`
-  let waitForLatestDiagnostics timeout (doc: Document) : Async<Diagnostic[]> =
+  let waitForLatestDiagnostics timestampToLookAfter timeout (doc: Document) : Async<Diagnostic[]> =
     async {
-      logger.trace (
+      logger.debug (
+        Log.setMessage "Waiting for diags for {uri} at version {version} looking for events after {timestampToLookAfter}"
+        >> Log.addContext "uri" doc.Uri
+        >> Log.addContext "version" doc.Version
+        >> Log.addContext "timestampToLookAfter" timestampToLookAfter
+      )
+      // use _ =
+      //   doc
+      //   |> diagnosticsStream
+      //   |> Observable.subscribe(fun x ->
+      //     logger.debug (
+      //       Log.setMessageI $"received on diagnosticsStream {x:x}"
+      //     )
+      //   )
+
+      return!
+        doc
+        |> diagnosticsStream
+        |> Observable.takeUntilOther (
+          doc
+          // `fsharp/documentAnalyzed` signals all checks & analyzers done
+          |> analyzedStream
+          |> Observable.filter (fun (_,n) -> n.TextDocument.Version = Some doc.Version)
+          // wait for late diagnostics
+          |> Observable.delay (waitForLateDiagnosticsDelay)
+        )
+        |> Observable.last
+        |> Observable.timeoutSpan timeout
+        |> Async.AwaitObservable
+        |> Async.map snd
+
+    }
+
+  let waitForDiagnosticsWithPredicate predicate (timeout : TimeSpan) (doc: Document)  =
+    async {
+      logger.debug (
         Log.setMessage "Waiting for diags for {uri} at version {version}"
         >> Log.addContext "uri" doc.Uri
         >> Log.addContext "version" doc.Version
       )
-      let tcs = TaskCompletionSource<_>()
 
-      doc
-      |> diagnosticsStream
-      |> Observable.takeUntilOther (
-        doc
-        // `fsharp/documentAnalyzed` signals all checks & analyzers done
-        |> analyzedStream
-        |> Observable.filter (fun n -> n.TextDocument.Version = Some doc.Version)
-        // wait for late diagnostics
-        |> Observable.delay waitForLateDiagnosticsDelay
+      let diagResult = TaskCompletionSource<_>()
+      let analyzerResult = TaskCompletionSource<_>()
+      let failDueToTimeout message (ts : TimeSpan) =
+        failtestf "%s. Expected task to complete but failed after timeout of %f ms"  message ts.TotalMilliseconds
+      doc.Server.Events
+      |> Observable.subscribe(fun (name, _, o) ->
+        logger.trace (
+          Log.setMessageI $"Received doc.Server.Events {name:name} - {o:o}"
+        )
       )
-      |> Observable.bufferSpan (timeout)
-      // |> Observable.timeoutSpan timeout
-      |> Observable.subscribe(fun x -> tcs.SetResult x)
       |> ignore
+      let aStream =
+        doc
+        |> analyzedStream
+        |> Observable.filter (fun (_, n) ->
+          let result = n.TextDocument.Version = Some doc.Version
+          logger.trace(
+            Log.setMessageI $"analyzedStream predicate : {result:result}"
+          )
+          result
+        )
 
-      let! result = tcs.Task |> Async.AwaitTask
 
-      return result |> Seq.last
+      let dstream =
+        doc
+        |> diagnosticsStream
+        |> Observable.filter (fun x ->
+          let result = predicate x
+          logger.trace(
+            Log.setMessageI $"diagnosticsStream predicate : {result:result}"
+          )
+          result
+        )
+
+
+      // Yes you would think to use Observable.combineLatest or Observable.zip but for some reason it stalls
+      use _ =
+        aStream
+        |> Observable.subscribe (analyzerResult.TrySetResult >> ignore)
+      use _ =
+        dstream
+        |> Observable.subscribe (diagResult.TrySetResult >> ignore)
+
+      let combined = task {
+        let! _ = analyzerResult.Task
+        return! diagResult.Task
+      }
+
+      let generateTimeout () = task {
+            do! Task.Delay(timeout)
+            failDueToTimeout "waitForDiagnosticsWithPredicate" timeout
+            return Unchecked.defaultof<_>
+      }
+      let! firstFinishedTask =
+        Task.WhenAny [
+              combined
+              generateTimeout ()
+          ]
+        |> Async.AwaitTask
+      return! firstFinishedTask |> Async.AwaitTask
     }
 
 
@@ -333,10 +457,28 @@ module Document =
               Version = doc.Version
               Text = initialText } }
 
+      let dt = DateTime.Now
       do! doc.Server.Server.TextDocumentDidOpen p
 
       try
-        return! doc |> waitForLatestDiagnostics Helpers.defaultTimeout
+        return! doc |> waitForLatestDiagnostics dt Helpers.defaultTimeout
+      with
+      | :? TimeoutException -> return failwith $"Timeout waiting for latest diagnostics for {doc.Uri}"
+    }
+
+  let openWith2 predicate initialText (doc: Document) =
+    async {
+      let p: DidOpenTextDocumentParams =
+        { TextDocument =
+            { Uri = doc.Uri
+              LanguageId = "fsharp"
+              Version = doc.Version
+              Text = initialText } }
+
+      do! doc.Server.Server.TextDocumentDidOpen p
+
+      try
+        return! doc |> waitForDiagnosticsWithPredicate predicate Helpers.defaultTimeout
       with
       | :? TimeoutException -> return failwith $"Timeout waiting for latest diagnostics for {doc.Uri}"
     }
@@ -359,10 +501,10 @@ module Document =
             [| { Range = None
                  RangeLength = None
                  Text = text } |] }
-
+      let dt = DateTime.Now
       do! doc.Server.Server.TextDocumentDidChange p
       do! Async.Sleep(TimeSpan.FromMilliseconds 250.)
-      return! doc |> waitForLatestDiagnostics Helpers.defaultTimeout
+      return! doc |> waitForLatestDiagnostics dt Helpers.defaultTimeout
     }
 
   let private assertOk result =

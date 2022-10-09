@@ -144,7 +144,7 @@ module private CodeFix =
         "let _ = 42"
   ]
 
-  let tests state = 
+  let tests state =
     let config =
       { defaultConfigDto with
           UnusedOpensAnalyzer = Some true

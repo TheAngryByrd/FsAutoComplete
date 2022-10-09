@@ -21,11 +21,13 @@ let tests state =
   let path = Path.Combine(__SOURCE_DIRECTORY__, @"../TestCases/CodeFixTests/RenameParamToMatchSignature/")
   let (fsiFile, fsFile) = ("Code.fsi", "Code.fs")
 
+
   serverTestList (nameof RenameParamToMatchSignature) state defaultConfigDto (Some path) (fun server -> [
     let checkWithFsi
       fsiSource
       fsSourceWithCursor
-      selectCodeFix
+      (predicateString : string)
+      (codeFix : string)
       fsSourceExpected
       = async {
         let fsiSource = fsiSource |> Text.trimTripleQuotation
@@ -33,10 +35,11 @@ let tests state =
           fsSourceWithCursor
           |> Text.trimTripleQuotation
           |> Cursor.assertExtractRange
-        let! (fsiDoc, diags) = server |> Server.openDocumentWithText fsiFile fsiSource
+        let! (fsiDoc, (_, diags)) = server |> Server.openDocumentWithText2 (fun _ -> true) fsiFile fsiSource
         use fsiDoc = fsiDoc
         Expect.isEmpty diags "There should be no diagnostics in fsi doc"
-        let! (fsDoc, diags) = server |> Server.openDocumentWithText fsFile fsSource
+        let containsString (d : Ionide.LanguageServerProtocol.Types.Diagnostic array) = d |> Array.exists(fun d ->  d.Message.Contains predicateString)
+        let! (fsDoc, (_, diags)) = server |> Server.openDocumentWithText2 (snd >> containsString) fsFile fsSource
         use fsDoc = fsDoc
 
         do!
@@ -44,7 +47,7 @@ let tests state =
             (fsDoc, diags)
             (fsSource, cursor)
             (Diagnostics.expectCode "3218")
-            selectCodeFix
+            (selectCodeFix codeFix)
             (After (fsSourceExpected |> Text.trimTripleQuotation))
       }
 
@@ -60,7 +63,8 @@ let tests state =
 
         let f $0v1 = v1 + 1
         """
-        (selectCodeFix "value1")
+        ("value1")
+        ("value1")
         """
         module Code
 
@@ -78,7 +82,8 @@ let tests state =
 
         let f $0v2 = v2 + 1
         """
-        (selectCodeFix "``my value2``")
+        ("my value2")
+        ("``my value2``")
         """
         module Code
 
@@ -96,7 +101,8 @@ let tests state =
 
         let f ``$0my value3`` = ``my value3`` + 1
         """
-        (selectCodeFix "value3")
+        ("value3")
+        ("value3")
         """
         module Code
 
@@ -118,7 +124,8 @@ let tests state =
           let v = a + b
           v + x * y
         """
-        (selectCodeFix "value4")
+        ("value4")
+        ("value4")
         """
         module Code
 
@@ -140,7 +147,8 @@ let tests state =
 
         let f ($0v5: int) = v5 + 1
         """
-        (selectCodeFix "value5")
+        ("value5")
+        ("value5")
         """
         module Code
 
@@ -160,7 +168,8 @@ let tests state =
         type T($0v6: int) =
           let _ = v6 + 3
         """
-        (selectCodeFix "value6")
+        ("value6")
+        ("value6")
         """
         module Code
 
@@ -182,7 +191,8 @@ let tests state =
         type T() =
           member _.F($0v7) = v7 + 1
         """
-        (selectCodeFix "value7")
+        ("value7")
+        ("value7")
         """
         module Code
 
@@ -201,7 +211,8 @@ let tests state =
 
         let f $0v8 = v8 + 1
         """
-        (selectCodeFix "value8'")
+        ("value8'")
+        ("value8'")
         """
         module Code
 
@@ -219,7 +230,8 @@ let tests state =
 
         let f $0v9' = v9' + 1
         """
-        (selectCodeFix "value9")
+        ("value9")
+        ("value9")
         """
         module Code
 
@@ -237,7 +249,8 @@ let tests state =
 
         let f $0value10 = value10 + 1
         """
-        (selectCodeFix "v10'2")
+        ("v10'2")
+        ("v10'2")
         """
         module Code
 
@@ -255,7 +268,8 @@ let tests state =
 
         let f $0v11'2 = v11'2 + 1
         """
-        (selectCodeFix "value11")
+        ("value11")
+        ("value11")
         """
         module Code
 
@@ -273,7 +287,8 @@ let tests state =
 
         let f $0v12 = v12 + 1
         """
-        (selectCodeFix "value12'v'2")
+        ("value12'v'2")
+        ("value12'v'2")
         """
         module Code
 
@@ -291,7 +306,8 @@ let tests state =
 
         let f $0value13'v'2 = value13'v'2 + 1
         """
-        (selectCodeFix "value13")
+        ("value13")
+        ("value13")
         """
         module Code
 
@@ -309,7 +325,8 @@ let tests state =
 
         let f $0``sig' and implementation 'impl' do not match`` = ``sig' and implementation 'impl' do not match`` + 1
         """
-        (selectCodeFix "value14")
+        ("value14")
+        ("value14")
         """
         module Code
 
@@ -328,7 +345,8 @@ let tests state =
 
         let f $0value15 = value15 + 1
         """
-        (selectCodeFix "``sig' and implementation 'impl' do not match``")
+        ("``sig' and implementation 'impl' do not match``")
+        ("``sig' and implementation 'impl' do not match``")
         """
         module Code
 

@@ -603,7 +603,7 @@ let autoOpenTests state =
             test false None server ("Regex", "System.Text.RegularExpressions") cursor expectedOpen true)
 
         yield! tests ]
-
+  testSequenced <|
   testList
     "Completion.AutoOpen"
     [

@@ -140,7 +140,7 @@ module Parser =
           Ionide.ProjInfo.Init.init (IO.DirectoryInfo Environment.CurrentDirectory) dotnetPath
 
         let lspFactory =
-          if adaptiveLspEnabled then
+          if adaptiveLspEnabled || true then
             fun () -> AdaptiveFSharpLspServer.startCore toolsPath workspaceLoaderFactory
           else
             fun () -> FSharpLspServer.startCore toolsPath stateDirectory workspaceLoaderFactory

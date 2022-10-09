@@ -16,7 +16,7 @@ open Ionide.ProjInfo.Logging
 module CodeFix =
   let private logger = LogProvider.getLoggerByName "CursorbasedTests.CodeFix"
 
-  let private diagnosticsIn (range: Range) (diags: Diagnostic[]) =
+  let diagnosticsIn (range: Range) (diags: Diagnostic[]) =
     diags
     |> Array.filter (fun diag -> range |> Range.overlapsStrictly diag.Range)
 

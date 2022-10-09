@@ -23,17 +23,6 @@ let private checkUsageAt
   expected
   = async {
     let source = sourceWithoutCursor |> Text.trimTripleQuotation
-    let! (doc, diags) =
-      let getDoc =
-        match doc with
-        | Untitled -> Server.createUntitledDocument
-        | Existing path -> Server.openDocumentWithText path
-      server |> getDoc source
-    use doc = doc
-
-    let diagsAtCursor =
-      diags
-      |> Array.filter (fun d -> d.Range |> Range.containsStrictly cursor)
 
     let isUnused (diag: Diagnostic) =
       diag.Source = Some "FSAC"
@@ -43,6 +32,24 @@ let private checkUsageAt
       diag.Message = "This value is unused"
       &&
       diag.Tags |> Option.map (Array.contains DiagnosticTag.Unnecessary) |> Option.defaultValue false
+
+    let diagnosticsPredicate =
+      match expected with
+      | Unused ->
+        Array.exists(fun d -> isUnused d &&  d.Range |> Range.containsStrictly cursor)
+      | Used ->
+        Array.forall(isUnused >> not)
+    let! (doc, (_, diags)) =
+      let getDoc =
+        match doc with
+        | Untitled -> Server.createUntitledDocument2 (snd >> diagnosticsPredicate)
+        | Existing path -> Server.openDocumentWithText2 (snd >> diagnosticsPredicate) path
+      server |> getDoc source
+    use doc = doc
+
+    let diagsAtCursor =
+      diags
+      |> Array.filter (fun d -> d.Range |> Range.containsStrictly cursor)
 
     let diag = diagsAtCursor |> Array.filter isUnused
     match expected with

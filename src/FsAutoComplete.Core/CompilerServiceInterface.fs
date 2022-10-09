@@ -1,5 +1,6 @@
 namespace FsAutoComplete
 
+open System
 open System.IO
 open FSharp.Compiler.CodeAnalysis
 open Utils
@@ -13,6 +14,10 @@ open FSharp.Compiler.Symbols
 type Version = int
 
 type FSharpCompilerServiceChecker(hasAnalyzers) =
+
+  do Environment.SetEnvironmentVariable("FCS_ParseFileCacheSize", "20")
+  do Environment.SetEnvironmentVariable("FCS_CheckFileInProjectCacheSize", "200")
+
   let checker =
     FSharpChecker.Create(
       projectCacheSize = 200,

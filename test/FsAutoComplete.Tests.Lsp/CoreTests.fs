@@ -362,9 +362,10 @@ let closeTests state =
           let! (doc, diags) = server |> Server.createUntitledDocument source
 
           Expect.isNonEmpty diags "There should be an error"
+          let dt = DateTime.Now
           do! doc |> Document.close
 
-          let! diags = doc |> Document.waitForLatestDiagnostics (TimeSpan.FromSeconds 5.0)
+          let! diags = doc |> Document.waitForLatestDiagnostics dt (TimeSpan.FromSeconds 5.0)
           Expect.equal diags Array.empty "There should be a final publishDiagnostics without any diags"
         })
       testCaseAsync
@@ -372,9 +373,10 @@ let closeTests state =
         (async {
           let! (doc, diags) = server |> Server.openDocument "Script.fsx"
           Expect.isNonEmpty diags "There should be an error"
+          let dt = DateTime.Now
           do! doc |> Document.close
 
-          let! diags = doc |> Document.waitForLatestDiagnostics (TimeSpan.FromSeconds 5.0)
+          let! diags = doc |> Document.waitForLatestDiagnostics dt (TimeSpan.FromSeconds 5.0)
           Expect.isNonEmpty diags "There should be no publishDiagnostics without any diags after close"
         })
       testCaseAsync
@@ -383,9 +385,10 @@ let closeTests state =
           let file = Path.Combine(root, "Script.fsx")
           let! (doc, diags) = server |> Server.openDocument file
           Expect.isNonEmpty diags "There should be an error"
+          let dt = DateTime.Now
           do! doc |> Document.close
 
-          let! diags = doc |> Document.waitForLatestDiagnostics (TimeSpan.FromSeconds 5.0)
+          let! diags = doc |> Document.waitForLatestDiagnostics dt (TimeSpan.FromSeconds 5.0)
           Expect.isEmpty diags "There should be a final publishDiagnostics without any diags"
         })
 
@@ -394,9 +397,10 @@ let closeTests state =
         (async {
           let! (doc, diags) = server |> Server.openDocument "InsideProjectInsideWorkspace.fs"
           Expect.isNonEmpty diags "There should be an error"
+          let dt = DateTime.Now
           do! doc |> Document.close
 
-          let! diags = doc |> Document.waitForLatestDiagnostics (TimeSpan.FromSeconds 5.0)
+          let! diags = doc |> Document.waitForLatestDiagnostics dt (TimeSpan.FromSeconds 5.0)
           Expect.isNonEmpty diags "There should be no publishDiagnostics without any diags after close"
         })
       testCaseAsync
@@ -405,8 +409,9 @@ let closeTests state =
           let file = Path.Combine(root, "InsideProjectOutsideWorkspace.fs")
           let! (doc, diags) = server |> Server.openDocument file
           Expect.isNonEmpty diags "There should be an error"
+          let dt = DateTime.Now
           do! doc |> Document.close
 
-          let! diags = doc |> Document.waitForLatestDiagnostics (TimeSpan.FromSeconds 5.0)
+          let! diags = doc |> Document.waitForLatestDiagnostics dt (TimeSpan.FromSeconds 5.0)
           Expect.isNonEmpty diags "There should be no publishDiagnostics without any diags after close"
         }) ])

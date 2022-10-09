@@ -52,17 +52,17 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
   let mutable sigHelpKind = None
   let mutable binaryLogConfig = Ionide.ProjInfo.BinaryLogGeneration.Off
 
-  let analyzeFile (filePath, version) =
+  let analyzeFile (filePath : string<LocalPath>, version) =
     let analyzers =
       [
         // if config.Linter then
         //   commands.Lint filePath |> Async.Ignore
         if config.UnusedOpensAnalyzer then
-          commands.CheckUnusedOpens filePath
+          commands.CheckUnusedOpens(filePath, Some version)
         if config.UnusedDeclarationsAnalyzer then
-          commands.CheckUnusedDeclarations filePath
+          commands.CheckUnusedDeclarations (filePath, Some version)
         if config.SimplifyNameAnalyzer then
-          commands.CheckSimplifiedNames filePath ]
+          commands.CheckSimplifiedNames (filePath, Some version) ]
 
     async {
       do! analyzers |> Async.Parallel |> Async.Ignore<unit[]>
@@ -171,21 +171,22 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
   let checkFileDebouncer =
     Debounce(DebugConfig.Default.CheckFileDebouncerTimeout, checkChangedFile)
 
-  let sendDiagnostics (uri: DocumentUri) (diags: Diagnostic[]) =
+  let sendDiagnostics (uri: DocumentUri) (version : DocumentVersion) (diags: Diagnostic[]) =
     logger.info (
-      Log.setMessage "SendDiag for {file}: {diags} entries"
+      Log.setMessage "SendDiag for {file} - {version}: {diags} entries"
       >> Log.addContextDestructured "file" uri
       >> Log.addContextDestructured "diags" diags.Length
+      >> Log.addContextDestructured "version" version
     )
 
-    { Uri = uri; Diagnostics = diags } |> lspClient.TextDocumentPublishDiagnostics
+    { Uri = uri; Version = version;  Diagnostics = diags } |> lspClient.TextDocumentPublishDiagnostics
 
   let diagnosticCollections = new DiagnosticCollection(sendDiagnostics)
 
   let handleCommandEvents (n: NotificationEvent) =
     try
       match n with
-      | NotificationEvent.FileParsed fn ->
+      | NotificationEvent.FileParsed (fn, version) ->
         let uri = Path.LocalPathToUri fn
 
         lspClient.CodeLensRefresh() |> Async.Start
@@ -210,12 +211,12 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
         |> lspClient.NotifyWorkspace
         |> Async.Start
 
-      | NotificationEvent.ParseError (errors, file) ->
+      | NotificationEvent.ParseError (errors, file, version) ->
         let uri = Path.LocalPathToUri file
         let diags = errors |> Array.map fcsErrorToDiagnostic
-        diagnosticCollections.SetFor(uri, "F# Compiler", diags)
+        diagnosticCollections.SetFor(uri, version, "F# Compiler", diags) |> Async.Start
 
-      | NotificationEvent.UnusedOpens (file, opens) ->
+      | NotificationEvent.UnusedOpens (file, version, opens) ->
         let uri = Path.LocalPathToUri file
 
         let diags =
@@ -231,9 +232,9 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
               Data = None
               CodeDescription = None })
 
-        diagnosticCollections.SetFor(uri, "F# Unused opens", diags)
+        diagnosticCollections.SetFor(uri, version, "F# Unused opens", diags) |> Async.Start
 
-      | NotificationEvent.UnusedDeclarations (file, decls) ->
+      | NotificationEvent.UnusedDeclarations (file, version, decls) ->
         let uri = Path.LocalPathToUri file
 
         let diags =
@@ -249,9 +250,9 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
               Data = None
               CodeDescription = None })
 
-        diagnosticCollections.SetFor(uri, "F# Unused declarations", diags)
+        diagnosticCollections.SetFor(uri, version, "F# Unused declarations", diags) |> Async.Start
 
-      | NotificationEvent.SimplifyNames (file, decls) ->
+      | NotificationEvent.SimplifyNames (file, version, decls) ->
         let uri = Path.LocalPathToUri file
 
         let diags =
@@ -272,7 +273,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
                 Data = None
                 CodeDescription = None })
 
-        diagnosticCollections.SetFor(uri, "F# simplify names", diags)
+        diagnosticCollections.SetFor(uri, version, "F# simplify names", diags) |> Async.Start
 
       // | NotificationEvent.Lint (file, warnings) ->
       //     let uri = Path.LocalPathToUri file
@@ -317,11 +318,11 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
         let ntf: PlainNotification = { Content = msg }
 
         lspClient.NotifyCancelledRequest ntf |> Async.Start
-      | NotificationEvent.AnalyzerMessage (messages, file) ->
+      | NotificationEvent.AnalyzerMessage (messages, file, version) ->
         let uri = Path.LocalPathToUri file
 
         match messages with
-        | [||] -> diagnosticCollections.SetFor(uri, "F# Analyzers", [||])
+        | [||] -> diagnosticCollections.SetFor(uri, version, "F# Analyzers", [||]) |> Async.Start
         | messages ->
           let diags =
             messages
@@ -355,8 +356,8 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
                 CodeDescription = None
                 Data = fixes })
 
-          diagnosticCollections.SetFor(uri, "F# Analyzers", diags)
-      | NotificationEvent.TestDetected (file, tests) ->
+          diagnosticCollections.SetFor(uri, version, "F# Analyzers", diags) |> Async.Start
+      | NotificationEvent.TestDetected (file, version, tests) ->
         let rec map
           (r: TestAdapter.TestAdapterEntry<FSharp.Compiler.Text.range>)
           : TestAdapter.TestAdapterEntry<Ionide.LanguageServerProtocol.Types.Range> =
@@ -577,7 +578,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
       )
 
       state.Forget filePath
-      diagnosticCollections.ClearFor uri
+      diagnosticCollections.ClearFor uri |> Async.Start
 
 
 
@@ -882,6 +883,8 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
     }
 
   member __.ScriptFileProjectOptions = commands.ScriptFileProjectOptions
+
+  member __.Notifications = commands.Notify
 
   interface IFSharpLspServer with
 
