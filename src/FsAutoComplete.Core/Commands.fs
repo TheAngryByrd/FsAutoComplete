@@ -42,8 +42,8 @@ type CoreResponse<'a> =
 
 [<RequireQualifiedAccess>]
 type FormatDocumentResponse =
-  | Formatted of source: NamedText * formatted: string
-  | FormattedRange of source: NamedText * formatted: string * range: FormatSelectionRange
+  | Formatted of source: IFSACSourceText * formatted: string
+  | FormattedRange of source: IFSACSourceText * formatted: string * range: FormatSelectionRange
   | UnChanged
   | Ignored
   | ToolNotPresent
@@ -173,7 +173,7 @@ module Commands =
     }
 
   let scopesForFile
-    (getParseResultsForFile: _ -> Async<Result<NamedText * FSharpParseFileResults, _>>)
+    (getParseResultsForFile: _ -> Async<Result<IFSACSourceText * FSharpParseFileResults, _>>)
     (file: string<LocalPath>)
     =
     asyncResult {
@@ -186,7 +186,7 @@ module Commands =
       return ranges
     }
 
-  let docForText (lines: NamedText) (tyRes: ParseAndCheckResults) : Document =
+  let docForText (lines: IFSACSourceText) (tyRes: ParseAndCheckResults) : Document =
     { LineCount = lines.Lines.Length
       FullName = tyRes.FileName // from the compiler, assumed safe
       GetText = fun _ -> string lines
@@ -198,7 +198,7 @@ module Commands =
     writeAbstractClassStub
     (tyRes: ParseAndCheckResults)
     (objExprRange: Range)
-    (lines: NamedText)
+    (lines: IFSACSourceText)
     (lineStr: LineStr)
     =
     asyncResult {
@@ -219,7 +219,7 @@ module Commands =
     tryFindRecordDefinitionFromPos
     (tyRes: ParseAndCheckResults)
     (pos: Position)
-    (lines: NamedText)
+    (lines: IFSACSourceText)
     (line: LineStr)
     =
     async {
@@ -361,7 +361,7 @@ module Commands =
     }
 
   let formatSelection
-    (tryGetFileCheckerOptionsWithLines: _ -> Result<NamedText, _>)
+    (tryGetFileCheckerOptionsWithLines: _ -> Result<IFSACSourceText, _>)
     (formatSelectionAsync: _ -> System.Threading.Tasks.Task<FantomasResponse>)
     (file: string<LocalPath>)
     (rangeToFormat: FormatSelectionRange)
@@ -418,7 +418,7 @@ module Commands =
     }
 
   let formatDocument
-    (tryGetFileCheckerOptionsWithLines: _ -> Result<NamedText, _>)
+    (tryGetFileCheckerOptionsWithLines: _ -> Result<IFSACSourceText, _>)
     (formatDocumentAsync: _ -> System.Threading.Tasks.Task<FantomasResponse>)
     (file: string<LocalPath>)
     : Async<Result<FormatDocumentResponse, string>> =
@@ -510,16 +510,16 @@ module Commands =
                            -> _
                            -> _
                            -> Async<Result<Choice<Dictionary<string, range array> * Dictionary<string, range array>, Dictionary<string, range array>>, string>>)
-    (tryGetFileSource: _ -> Result<NamedText, _>)
+    (tryGetFileSource: _ -> Result<IFSACSourceText, _>)
     (pos: Position)
     (tyRes: ParseAndCheckResults)
     (lineStr: LineStr)
-    (text: NamedText)
+    (text: IFSACSourceText)
     =
     asyncResult {
       match! symbolUseWorkspace pos lineStr text tyRes with
       | Choice1Of2 (declarationsByDocument, symbolUsesByDocument) ->
-        let totalSetOfRanges = Dictionary<NamedText, _>()
+        let totalSetOfRanges = Dictionary<IFSACSourceText, _>()
 
         for (KeyValue (filePath, declUsages)) in declarationsByDocument do
           let! text = tryGetFileSource (UMX.tag filePath)
@@ -537,7 +537,7 @@ module Commands =
 
         return totalSetOfRanges |> Seq.map (fun (KeyValue (k, v)) -> k, v) |> Array.ofSeq
       | Choice2Of2 (mixedDeclarationAndSymbolUsesByDocument) ->
-        let totalSetOfRanges = Dictionary<NamedText, _>()
+        let totalSetOfRanges = Dictionary<IFSACSourceText, _>()
 
         for (KeyValue (filePath, symbolUses)) in mixedDeclarationAndSymbolUsesByDocument do
           let! text = tryGetFileSource (UMX.tag filePath)
@@ -553,7 +553,7 @@ module Commands =
     tyRes.TryGetToolTip pos lineStr
     |> Result.bimap CoreResponse.Res CoreResponse.ErrorRes
 
-  let pipelineHints (tryGetFileSource: _ -> Result<NamedText, _>) (tyRes: ParseAndCheckResults) =
+  let pipelineHints (tryGetFileSource: _ -> Result<IFSACSourceText, _>) (tyRes: ParseAndCheckResults) =
     result {
       // Debug.waitForDebuggerAttached "AdaptiveServer"
       let! contents = tryGetFileSource tyRes.FileName
@@ -680,11 +680,11 @@ module Commands =
   let symbolUseWorkspace
     getDeclarationLocation
     (findReferencesForSymbolInFile: (string * FSharpProjectOptions * FSharpSymbol) -> Async<Range seq>)
-    (tryGetFileSource: string<LocalPath> -> ResultOrString<NamedText>)
+    (tryGetFileSource: string<LocalPath> -> ResultOrString<IFSACSourceText>)
     getProjectOptionsForFsproj
     pos
     lineStr
-    (text: NamedText)
+    (text: IFSACSourceText)
     (tyRes: ParseAndCheckResults)
     =
     asyncResult {
@@ -1203,7 +1203,8 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
 
   member __.LastCheckResult = lastCheckResult
 
-  member __.SetFileContent(file: string<LocalPath>, lines: NamedText, version) = state.AddFileText(file, lines, version)
+  member __.SetFileContent(file: string<LocalPath>, lines: IFSACSourceText, version) =
+    state.AddFileText(file, lines, version)
 
   member private x.MapResultAsync
     (
@@ -1393,7 +1394,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
   /// Gets the current project options for the given file.
   /// If the file is a script, determines if the file content is changed enough to warrant new project options,
   /// and if so registers them.
-  member x.EnsureProjectOptionsForFile(file: string<LocalPath>, text: NamedText, version, fsiRefs) =
+  member x.EnsureProjectOptionsForFile(file: string<LocalPath>, text: IFSACSourceText, version, fsiRefs) =
     async {
       match state.GetProjectOptions(file) with
       | Some opts ->
@@ -1504,7 +1505,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
     (
       file: string<LocalPath>,
       version: int,
-      content: NamedText,
+      content: IFSACSourceText,
       tfmConfig: FSIRefs.TFM,
       isFirstOpen: bool
     ) : Async<unit> =
@@ -1553,7 +1554,13 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
     |> Async.Sequential
     |> Async.map ignore<unit[]>
 
-  member private x.CheckFile(file, text: NamedText, version: int, projectOptions: FSharpProjectOptions) : Async<unit> =
+  member private x.CheckFile
+    (
+      file,
+      text: IFSACSourceText,
+      version: int,
+      projectOptions: FSharpProjectOptions
+    ) : Async<unit> =
     async {
       do x.CancelQueue file
       return! x.CheckCore(file, version, text, projectOptions)
@@ -1652,7 +1659,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
     (tyRes: ParseAndCheckResults)
     (pos: Position)
     lineStr
-    (lines: NamedText)
+    (lines: IFSACSourceText)
     (fileName: string<LocalPath>)
     filter
     includeKeywords
@@ -1768,7 +1775,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
           InsertText = formattedXmlDoc }
     }
 
-  member x.SymbolUseWorkspace(pos, lineStr, text: NamedText, tyRes: ParseAndCheckResults) =
+  member x.SymbolUseWorkspace(pos, lineStr, text: IFSACSourceText, tyRes: ParseAndCheckResults) =
     asyncResult {
 
       let getDeclarationLocation (symUse, text) =
@@ -1800,7 +1807,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
           tyRes
     }
 
-  member x.RenameSymbol(pos: Position, tyRes: ParseAndCheckResults, lineStr: LineStr, text: NamedText) =
+  member x.RenameSymbol(pos: Position, tyRes: ParseAndCheckResults, lineStr: LineStr, text: IFSACSourceText) =
     asyncResult {
       let symbolUseWorkspace pos lineStr text tyRes =
         x.SymbolUseWorkspace(pos, lineStr, text, tyRes)
@@ -1839,7 +1846,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
     (
       tyRes: ParseAndCheckResults,
       pos: Position,
-      lines: NamedText,
+      lines: IFSACSourceText,
       triggerChar,
       possibleSessionKind
     ) =
@@ -1890,7 +1897,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
     |> x.AsCancellable tyRes.FileName
     |> AsyncResult.recoverCancellation
 
-  member x.GetRecordStub (tyRes: ParseAndCheckResults) (pos: Position) (lines: NamedText) (line: LineStr) =
+  member x.GetRecordStub (tyRes: ParseAndCheckResults) (pos: Position) (lines: IFSACSourceText) (line: LineStr) =
 
     Commands.getRecordStub (tryFindRecordDefinitionFromPos codeGenServer) tyRes pos lines line
     |> x.AsCancellable tyRes.FileName
@@ -1899,7 +1906,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
   member x.GetAbstractClassStub
     (tyRes: ParseAndCheckResults)
     (objExprRange: Range)
-    (lines: NamedText)
+    (lines: IFSACSourceText)
     (lineStr: LineStr)
     =
     let tryFindAbstractClassExprInBufferAtPos =

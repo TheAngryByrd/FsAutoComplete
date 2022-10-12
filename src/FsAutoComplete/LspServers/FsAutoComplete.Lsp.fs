@@ -83,7 +83,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
   /// `DateTime` instead of `Stopwatch`: stopwatch doesn't work with multiple simultaneous consumers
   let mutable lastCheckFile = DateTime.UtcNow
 
-  let checkFile (filePath: string<LocalPath>, version: int, content: NamedText, isFirstOpen: bool) =
+  let checkFile (filePath: string<LocalPath>, version: int, content: IFSACSourceText, isFirstOpen: bool) =
     asyncResult {
 
       let start =
@@ -608,7 +608,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
 
   ///Helper function for handling Position requests using **recent** type check results
   member x.positionHandler<'a, 'b when 'b :> ITextDocumentPositionParams>
-    (f: 'b -> FcsPos -> ParseAndCheckResults -> string -> NamedText -> AsyncLspResult<'a>)
+    (f: 'b -> FcsPos -> ParseAndCheckResults -> string -> IFSACSourceText -> AsyncLspResult<'a>)
     (arg: 'b)
     : AsyncLspResult<'a> =
     async {
@@ -661,7 +661,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
 
   ///Helper function for handling file requests using **recent** type check results
   member x.fileHandler<'a>
-    (f: string<LocalPath> -> ParseAndCheckResults -> NamedText -> AsyncLspResult<'a>)
+    (f: string<LocalPath> -> ParseAndCheckResults -> IFSACSourceText -> AsyncLspResult<'a>)
     (arg: TextDocumentIdentifier)
     : AsyncLspResult<'a> =
     async {
@@ -716,8 +716,8 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
     (
       fileName: string<LocalPath>,
       action: unit -> Async<Result<FormatDocumentResponse, string>>,
-      handlerFormattedDoc: (NamedText * string) -> TextEdit[],
-      handleFormattedRange: (NamedText * string * FormatSelectionRange) -> TextEdit[]
+      handlerFormattedDoc: (IFSACSourceText * string) -> TextEdit[],
+      handleFormattedRange: (IFSACSourceText * string * FormatSelectionRange) -> TextEdit[]
     ) =
     async {
       let! res = action ()
@@ -1098,7 +1098,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
 
         let getFileLines = commands.TryGetFileCheckerOptionsWithLines >> Result.map snd
 
-        let getLineText (lines: NamedText) (range: Ionide.LanguageServerProtocol.Types.Range) =
+        let getLineText (lines: IFSACSourceText) (range: Ionide.LanguageServerProtocol.Types.Range) =
           lines.GetText(protocolRangeToRange (UMX.untag lines.FileName) range)
 
         let getRangeText fileName (range: Ionide.LanguageServerProtocol.Types.Range) =
@@ -1634,7 +1634,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
 
           let documentChanges =
             documentsAndRanges
-            |> Seq.map (fun (namedText, symbols) ->
+            |> Seq.map (fun (sourceText, symbols) ->
               let edits =
                 let newName =
                   p.NewName
@@ -1647,8 +1647,8 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
                 |> Array.ofSeq
 
               { TextDocument =
-                  { Uri = Path.FilePathToUri(UMX.untag namedText.FileName)
-                    Version = commands.TryGetFileVersion namedText.FileName }
+                  { Uri = Path.FilePathToUri(UMX.untag sourceText.FileName)
+                    Version = commands.TryGetFileVersion sourceText.FileName }
                 Edits = edits })
             |> Array.ofSeq
 
@@ -1834,7 +1834,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
 
         commands.FormatDocument fileName
 
-      let handlerFormattedDoc (lines: NamedText, formatted: string) =
+      let handlerFormattedDoc (lines: IFSACSourceText, formatted: string) =
         let range =
           let zero = { Line = 0; Character = 0 }
           let lastPos = lines.LastFilePosition
@@ -1866,7 +1866,7 @@ type FSharpLspServer(state: State, lspClient: FSharpLspClient) =
 
         commands.FormatSelection(fileName, range)
 
-      let handlerFormattedRangeDoc (lines: NamedText, formatted: string, range: FormatSelectionRange) =
+      let handlerFormattedRangeDoc (lines: IFSACSourceText, formatted: string, range: FormatSelectionRange) =
         let range =
           { Start =
               { Line = range.StartLine - 1
