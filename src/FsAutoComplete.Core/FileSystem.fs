@@ -63,10 +63,28 @@ module RangeExtensions =
 module SourceText =
   open Microsoft.CodeAnalysis.Text
 
+    /// Ported from Roslyn.Utilities
+    [<RequireQualifiedAccess>]
+  module Hash =
+    /// (From Roslyn) This is how VB Anonymous Types combine hash values for fields.
+    let combine (newKey: int) (currentKey: int) = (currentKey * (int 0xA5555529)) + newKey
+
+    let combineValues (values: seq<'T>) =
+        (0, values) ||> Seq.fold (fun hash value -> combine (value.GetHashCode()) hash)
+
   let create (sourceText: SourceText) =
     let sourceText =
       { new Object() with
-          override _.GetHashCode() = sourceText.GetHashCode()
+          override _.GetHashCode() =
+            let checksum = sourceText.GetChecksum()
+            let contentsHash = if not checksum.IsDefault then Hash.combineValues checksum else 0
+            let encodingHash = if not (isNull sourceText.Encoding) then sourceText.Encoding.GetHashCode() else 0
+
+            sourceText.ChecksumAlgorithm.GetHashCode()
+            |> Hash.combine encodingHash
+            |> Hash.combine contentsHash
+            |> Hash.combine sourceText.Length
+
         interface ISourceText with
 
           member _.Item
@@ -184,6 +202,7 @@ type IFSACSourceText =
   abstract Item: index: Position -> char option with get
 
   abstract Item: index: Range -> Result<string, string> with get
+
 
 /// A copy of the StringText type from F#.Compiler.Text, which is private.
 /// Adds a UOM-typed filename to make range manipulation easier, as well as
