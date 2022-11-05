@@ -1157,7 +1157,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
 
 
   let fillHelpTextInTheBackground decls (pos: Position) fn getLine =
-    let declName (d: DeclarationListItem) = d.Name
+    let declName (d: DeclarationListItem) = d.NameInList
 
     //Fill list of declarations synchronously to know which declarations should be in cache.
     for d in decls do
@@ -1667,7 +1667,7 @@ type Commands(checker: FSharpCompilerServiceChecker, state: State, hasAnalyzers:
 
       match res with
       | Some (decls, residue, shouldKeywords) ->
-        let declName (d: DeclarationListItem) = d.Name
+        let declName (d: DeclarationListItem) = d.NameInList
 
         //Init cache for current list
         state.Declarations.Clear()

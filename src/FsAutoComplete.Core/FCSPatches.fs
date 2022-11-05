@@ -489,5 +489,7 @@ module SyntaxTreeOps =
         |> Option.defaultValue false
       | SynExpr.IndexFromEnd (expr, range) -> walkExpr expr
       | SynExpr.DebugPoint (innerExpr = expr) -> walkExpr expr
+      | SynExpr.Dynamic(func, _, args, _) -> walkExpr func || walkExpr args
+      | SynExpr.Typar(SynTypar(_, _, _), _) -> false
 
     walkExpr inpExpr

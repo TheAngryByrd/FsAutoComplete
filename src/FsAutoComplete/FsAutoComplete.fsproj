@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net6.0</TargetFrameworks>
+    <TargetFrameworks>net7.0</TargetFrameworks>
     <TargetFrameworks Condition="'$(BuildNet7)' == 'true'">net6.0;net7.0</TargetFrameworks>
     <AssemblyName>fsautocomplete</AssemblyName>
     <ServerGarbageCollection>true</ServerGarbageCollection>
@@ -14,6 +14,7 @@
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
     <Authors>FsAutoComplete contributors</Authors>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="\" />
@@ -37,6 +38,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FsAutoComplete.Core\FsAutoComplete.Core.fsproj" />
+    <ProjectReference Include="C:\Users\jimmy\Repositories\public\TheAngryByrd\dotnet-proj-info\src\Ionide.ProjInfo.ProjectSystem\Ionide.ProjInfo.ProjectSystem.fsproj"/>
   </ItemGroup>
   <PropertyGroup Condition=" '$(PackAsTool)' == 'true' ">
     <AssemblyName>fsautocomplete</AssemblyName>

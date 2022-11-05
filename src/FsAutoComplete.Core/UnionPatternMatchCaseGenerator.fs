@@ -47,7 +47,7 @@ let private clauseIsCandidateForCodeGen (cursorPos: Position) (SynMatchClause (p
     | SynPat.Or (lhsPat = leftPat; rhsPat = rightPat) -> patIsCandidate leftPat || patIsCandidate rightPat
     | SynPat.Ands (innerPatList, _) -> List.exists patIsCandidate innerPatList
     // This is the 'hd :: tail -> ...' pattern
-    | SynPat.LongIdent(longDotId = LongIdentWithDots ([ ident ], [])) when ident.idText = "op_ColonColon" -> false
+    | SynPat.LongIdent(longDotId = SynLongIdent ([ ident ], [], _)) when ident.idText = "op_ColonColon" -> false
     | SynPat.LongIdent (argPats = ConstructorPats nestedPats; range = r) ->
       // The cursor should not be in the nested patterns
       Range.rangeContainsPos r cursorPos
@@ -77,10 +77,10 @@ let private tryFindPatternMatchExprInParsedInput (pos: Position) (parsedInput: P
   let inline getIfPosInRange range f =
     if Range.rangeContainsPos range pos then f () else None
 
-  let rec walkImplFileInput (ParsedImplFileInput (modules = moduleOrNamespaceList)) =
+  let rec walkImplFileInput (ParsedImplFileInput (contents = moduleOrNamespaceList)) =
     List.tryPick walkSynModuleOrNamespace moduleOrNamespaceList
 
-  and walkSynModuleOrNamespace (SynModuleOrNamespace (_, _, _, decls, _, _, _, range)) =
+  and walkSynModuleOrNamespace (SynModuleOrNamespace (_, _, _, decls, _, _, _, range, _)) =
     getIfPosInRange range (fun () -> List.tryPick walkSynModuleDecl decls)
 
   and walkSynModuleDecl (decl: SynModuleDecl) =
@@ -126,7 +126,11 @@ let private tryFindPatternMatchExprInParsedInput (pos: Position) (parsedInput: P
       | SynMemberDefn.Open _
       | SynMemberDefn.ImplicitInherit _
       | SynMemberDefn.Inherit _
-      | SynMemberDefn.ImplicitCtor _ -> None)
+      | SynMemberDefn.ImplicitCtor _ -> None
+      | SynMemberDefn.GetSetMember(getter, setter, _, _) ->
+        Option.toList getter @ Option.toList setter
+        |> List.tryPick walkBinding
+      )
 
   and walkBinding (SynBinding (expr = expr) as binding) =
     getIfPosInRange binding.RangeOfBindingWithRhs (fun () -> walkExpr expr)
@@ -340,7 +344,7 @@ let getWrittenCases (patMatchExpr: PatternMatchExpr) =
 
   let rec getCasesInPattern (pat: SynPat) =
     match pat with
-    | SynPat.LongIdent (longDotId = LongIdentWithDots (unionCaseLongIdent, _); argPats = constructorArgs) ->
+    | SynPat.LongIdent (longDotId = SynLongIdent (unionCaseLongIdent, _, _); argPats = constructorArgs) ->
       // Get list of qualifiers, this can be checked for length later.
       let reversedIdents =
         unionCaseLongIdent |> List.map (fun id -> id.idText) |> List.rev

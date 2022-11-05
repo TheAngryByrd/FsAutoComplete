@@ -21,12 +21,12 @@ open FSharp.Compiler.Text.Position
 open FSharp.Compiler.Text.Range
 
 // Adjustments to compile with older FCS version
-type SynLongIdent = LongIdentWithDots
-let SynLongIdent (id, r, _) = LongIdentWithDots(id, r)
+// type SynLongIdent = LongIdentWithDots
+// let SynLongIdent (id, r, _) = LongIdentWithDots(id, r)
 
-type LongIdentWithDots with
+(*type LongIdentWithDots with
 
-  member lid.LongIdent = lid.Lid
+  member lid.LongIdent = lid.Lid*)
 
 type private Range with
 
@@ -325,6 +325,12 @@ module SyntaxTraversal =
         None
 #endif
 
+  let getTypeFromTuplePath (path: SynTupleTypeSegment list) : SynType list =
+    path
+    |> List.choose (function
+        | SynTupleTypeSegment.Type t -> Some t
+        | _ -> None)
+
   /// traverse an implementation file walking all the way down to SynExpr or TypeAbbrev at a particular location
   ///
   let Traverse (pos: pos, parseTree, visitor: SyntaxVisitorBase<'T>) =
@@ -384,7 +390,11 @@ module SyntaxTraversal =
         let traversePat = traversePat path
 
         match e with
-
+        | SynExpr.Dynamic(f, r1, a, r2) ->
+          traverseSynExpr f
+          |> Option.orElseWith(fun () -> traverseSynExpr a)
+        | SynExpr.Typar (_,_) ->
+            None
         | SynExpr.Paren (synExpr, _, _, _parenRange) -> traverseSynExpr synExpr
 
         | SynExpr.Quote (_synExpr, _, synExpr2, _, _range) ->
@@ -822,14 +832,14 @@ module SyntaxTraversal =
         | SynType.App (typeName, _, typeArgs, _, _, _, _)
         | SynType.LongIdentApp (typeName, _, _, typeArgs, _, _, _) ->
           [ yield typeName; yield! typeArgs ] |> List.tryPick (traverseSynType path)
-        | SynType.Fun (ty1, ty2, _) -> [ ty1; ty2 ] |> List.tryPick (traverseSynType path)
+        | SynType.Fun (ty1, ty2, _, _) -> [ ty1; ty2 ] |> List.tryPick (traverseSynType path)
         | SynType.MeasurePower (ty, _, _)
         | SynType.HashConstraint (ty, _)
         | SynType.WithGlobalConstraints (ty, _, _)
         | SynType.Array (_, ty, _) -> traverseSynType path ty
         | SynType.StaticConstantNamed (ty1, ty2, _)
         | SynType.MeasureDivide (ty1, ty2, _) -> [ ty1; ty2 ] |> List.tryPick (traverseSynType path)
-        | SynType.Tuple (_, tys, _) -> tys |> List.map snd |> List.tryPick (traverseSynType path)
+        | SynType.Tuple (_, tys, _) -> tys |> getTypeFromTuplePath |> List.tryPick (traverseSynType path)
         | SynType.StaticConstantExpr (expr, _) -> traverseSynExpr [] expr
         | SynType.Anon _ -> None
         | _ -> None
@@ -967,6 +977,11 @@ module SyntaxTraversal =
       | SynMemberDefn.Inherit (synType, _identOption, range) -> traverseInherit (synType, range)
       | SynMemberDefn.ValField (_synField, _range) -> None
       | SynMemberDefn.NestedType (synTypeDefn, _synAccessOption, _range) -> traverseSynTypeDefn path synTypeDefn
+      | SynMemberDefn.GetSetMember(g, s, r, _) ->
+        Option.bind (traverseSynBinding path) g
+        |> Option.orElseWith(fun () -> Option.bind (traverseSynBinding path) s)
+
+
 
     and traverseSynMatchClause origPath mc =
       let defaultTraverse mc =
@@ -997,7 +1012,7 @@ module SyntaxTraversal =
       visitor.VisitBinding(origPath, defaultTraverse, b)
 
     match parseTree with
-    | ParsedInput.ImplFile (ParsedImplFileInput (modules = l)) ->
+    | ParsedInput.ImplFile (ParsedImplFileInput (contents = l)) ->
       let fileRange =
 #if DEBUG
         match l with

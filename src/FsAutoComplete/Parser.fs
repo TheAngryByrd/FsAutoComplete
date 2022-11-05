@@ -7,7 +7,6 @@ open Serilog.Core
 open Serilog.Events
 open System.CommandLine
 open System.CommandLine.Parsing
-open System.CommandLine.Builder
 open Serilog.Filters
 open System.Runtime.InteropServices
 open System.Threading.Tasks
@@ -224,7 +223,7 @@ module Parser =
       let logConf =
         LoggerConfiguration()
           .MinimumLevel.ControlledBy(verbositySwitch)
-          .Filter.ByExcluding(Matching.FromSource("FileSystem"))
+          // .Filter.ByExcluding(Matching.FromSource("FileSystem"))
           .Filter.ByExcluding(sourcesToExclude)
           .Enrich.FromLogContext()
           .Destructure.FSharpTypes()

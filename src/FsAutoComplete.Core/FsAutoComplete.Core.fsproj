@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFrameworks>net7.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FsAutoComplete.Logging\FsAutoComplete.Logging.fsproj" />
     <ProjectReference Include="C:\Users\jimmy\Repositories\public\TheAngryByrd\LanguageServerProtocol\src\Ionide.LanguageServerProtocol.fsproj"/>
+    <ProjectReference Include="C:\Users\jimmy\Repositories\public\TheAngryByrd\dotnet-proj-info\src\Ionide.ProjInfo.ProjectSystem\Ionide.ProjInfo.ProjectSystem.fsproj"/>
     <TrimmerRootAssembly Include="FsAutoComplete.Core" />
   </ItemGroup>
   <ItemGroup>

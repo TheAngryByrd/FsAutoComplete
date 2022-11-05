@@ -8,9 +8,9 @@ FSharp.Core
 FSharp.UMX
 FsToolkit.ErrorHandling
 ICSharpCode.Decompiler
-Ionide.KeepAChangelog.Tasks
+# Ionide.KeepAChangelog.Tasks
 # Ionide.LanguageServerProtocol
-Ionide.ProjInfo.ProjectSystem
+# Ionide.ProjInfo.ProjectSystem
 Microsoft.NETFramework.ReferenceAssemblies
 Microsoft.SourceLink.GitHub
 Newtonsoft.Json

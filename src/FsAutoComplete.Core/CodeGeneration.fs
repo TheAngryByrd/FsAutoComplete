@@ -640,7 +640,7 @@ module CodeGenerationUtils =
 
   let (|LongIdentPattern|_|) =
     function
-    | SynPat.LongIdent(longDotId = LongIdentWithDots (xs, _)) ->
+    | SynPat.LongIdent(longDotId = SynLongIdent (xs, _, _)) ->
       //            let (name, range) = xs |> List.map (fun x -> x.idText, x.idRange) |> List.last
       let last = List.last xs
       Some(last.idText, last.idRange)
@@ -926,13 +926,19 @@ module CodeGenerationUtils =
     | SynRationalConst.Rational (numerator, denominator, _) -> sprintf "(%i/%i)" numerator denominator
     | SynRationalConst.Negate (RationalConst s) -> sprintf "- %s" s
 
+  let getTypeFromTuplePath (path: SynTupleTypeSegment list) : SynType list =
+      path
+      |> List.choose (function
+          | SynTupleTypeSegment.Type t -> Some t
+          | _ -> None)
+
   let rec (|TypeIdent|_|) =
     function
     | SynType.Var (SynTypar (s, req, _), _) ->
       match req with
       | TyparStaticReq.None -> Some("'" + s.idText)
       | TyparStaticReq.HeadType -> Some("^" + s.idText)
-    | SynType.LongIdent (LongIdentWithDots (xs, _)) -> xs |> Seq.map (fun x -> x.idText) |> String.concat "." |> Some
+    | SynType.LongIdent (SynLongIdent  (xs, _, _)) -> xs |> Seq.map (fun x -> x.idText) |> String.concat "." |> Some
     | SynType.App (t, _, ts, _, _, isPostfix, _) ->
       match t, ts with
       | TypeIdent typeName, [] -> Some typeName
@@ -952,7 +958,8 @@ module CodeGenerationUtils =
         debug "Unsupported case with %A and %A" t ts
         None
     | SynType.Anon _ -> Some "_"
-    | SynType.Tuple (_, ts, _) -> Some(ts |> Seq.choose (snd >> (|TypeIdent|_|)) |> String.concat " * ")
+    | SynType.Tuple (_, ts, _) ->
+        Some(ts |>  getTypeFromTuplePath |> Seq.choose ((|TypeIdent|_|)) |> String.concat " * ")
     | SynType.Array (dimension, TypeIdent typeName, _) -> Some(sprintf "%s [%s]" typeName (String(',', dimension - 1)))
     | SynType.MeasurePower (TypeIdent typeName, RationalConst power, _) -> Some(sprintf "%s^%s" typeName power)
     | SynType.MeasureDivide (TypeIdent numerator, TypeIdent denominator, _) ->
