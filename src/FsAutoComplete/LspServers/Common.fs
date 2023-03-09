@@ -183,19 +183,24 @@ module Async =
 
   let StartWithCT ct work = Async.Start(work, ct)
 
-  let RunSynchronouslyWithCT ct work =
-    Async.RunSynchronously(work, cancellationToken = ct)
+  // let RunSynchronouslyWithCT ct work =
+  //   // let work =
+  //   //   async {
+  //   //     do! Async.SwitchToNewThread ()
+  //   //     return! work
+  //   //   }
+  //   Async.RunSynchronously(work, cancellationToken = ct)
 
-  let RunSynchronouslyWithCTSafe ct work =
-    try
-      work |> RunSynchronouslyWithCT(ct ()) |> Some
-    with
-    | :? OperationCanceledException as e ->
-      logCancelled e
-      None
-    | :? ObjectDisposedException as e when e.Message.Contains("CancellationTokenSource has been disposed") ->
-      logCancelled e
-      None
+  // let RunSynchronouslyWithCTSafe ct work =
+  //   try
+  //     work |> RunSynchronouslyWithCT(ct ()) |> Some
+  //   with
+  //   | :? OperationCanceledException as e ->
+  //     logCancelled e
+  //     None
+  //   | :? ObjectDisposedException as e when e.Message.Contains("CancellationTokenSource has been disposed") ->
+  //     logCancelled e
+  //     None
 
 [<AutoOpen>]
 module ObservableExtensions =

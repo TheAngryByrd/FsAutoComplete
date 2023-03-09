@@ -25,7 +25,7 @@ type ICodeGenerationService =
   abstract GetSymbolAndUseAtPositionOfKind:
     string<LocalPath> * Position * SymbolKind -> Async<option<LexerSymbol * option<FSharpSymbolUse>>>
 
-  abstract ParseFileInProject: string<LocalPath> -> option<FSharpParseFileResults>
+  abstract ParseFileInProject: string<LocalPath> -> Async<option<FSharpParseFileResults>>
 
 type CodeGenerationService(checker: FSharpCompilerServiceChecker, state: State) =
   interface ICodeGenerationService with
@@ -64,15 +64,17 @@ type CodeGenerationService(checker: FSharpCompilerServiceChecker, state: State) 
           return! None
       }
 
-    override x.ParseFileInProject(fileName) =
+    override x.ParseFileInProject(fileName) = async {
       match state.TryGetFileCheckerOptionsWithLines fileName with
-      | ResultOrString.Error _ -> None
+      | ResultOrString.Error _ -> return None
       | ResultOrString.Ok(opts, text) ->
-        try
-          checker.TryGetRecentCheckResultsForFile(fileName, opts, text)
-          |> Option.map (fun n -> n.GetParseResults)
-        with _ ->
-          None
+        return
+          try
+            checker.TryGetRecentCheckResultsForFile(fileName, opts, text)
+            |> Option.map (fun n -> n.GetParseResults)
+          with _ ->
+            None
+    }
 
 module CodeGenerationUtils =
   open FSharp.Compiler.Syntax.PrettyNaming

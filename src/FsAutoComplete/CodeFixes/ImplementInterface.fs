@@ -236,7 +236,6 @@ let titleWithoutTypeAnnotation = "Implement interface without type annotation"
 /// codefix that generates members for an interface implementation
 let fix
   (getParseResultsForFile: GetParseResultsForFile)
-  (getProjectOptionsForFile: GetProjectOptionsForFile)
   (config: unit -> Config)
   : CodeFix =
   Run.ifDiagnosticByCode (Set.ofList [ "366" ]) (fun diagnostic codeActionParams ->

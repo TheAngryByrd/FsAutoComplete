@@ -14,6 +14,8 @@ github TheAngryByrd/FsOpenTelemetry src/FsOpenTelemetry/FsOpenTelemetry.fs
 
 nuget Fantomas.Client
 nuget FSharp.Compiler.Service
+nuget FsToolkit.ErrorHandling.TaskResult
+nuget IcedTasks
 nuget Ionide.ProjInfo
 nuget Ionide.ProjInfo.FCS
 nuget Ionide.ProjInfo.ProjectSystem
