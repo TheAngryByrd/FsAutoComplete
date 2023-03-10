@@ -1054,7 +1054,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
   do
     FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem <-
-      FileSystem(FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem, forceFindOpenFile)
+      FileSystem(FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem, (findFileInOpenFiles >> AVal.force))
 
   let forceFindSourceText filePath =
     forceFindOpenFileOrRead filePath |> Result.map (fun f -> f.Lines)
@@ -1068,13 +1068,19 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           let! checker = checker
           and! tfmConfig = tfmConfig
 
-          let! (projs : FSharpProjectOptions) =
-            checker.GetProjectOptionsFromScript(filePath, file.Lines, tfmConfig)
-            |> fun work -> Async.StartImmediateAsTask(work, ctok)
-          projs |> scriptFileProjectOptions.Trigger
+          let! proj =  taskOption {
+            let! cts = tryGetOpenFileToken filePath
+            let! (projs : FSharpProjectOptions) =
+              checker.GetProjectOptionsFromScript(filePath, file.Lines, tfmConfig)
+              |> Async.withCancellation cts.Token
+              |> fun work -> Async.StartImmediateAsTask(work, ctok)
+            projs |> scriptFileProjectOptions.Trigger
+
+            return projs
+          }
+          return file, Option.toList proj
 
 
-          return file, [projs]
         else
           let! projs =
             sourceFileToProjectOptions
@@ -1292,21 +1298,21 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           // return None
           let file = info.Lines.FileName
           let! checker = checker
-          let opts = selectProject projectOptions
-          let cts = tryGetOpenFileToken file
-          match opts with
-          | Some opts ->
 
+
+          return! taskOption {
+            let! opts = selectProject projectOptions
+            let! cts = tryGetOpenFileToken file
             let parseOpts = Utils.projectOptionsToParseOptions opts
 
             let! result =
               checker.ParseFile(file, info.Lines, parseOpts)
+              |> Async.withCancellation cts.Token
               |> fun work -> Async.StartImmediateAsTask(work, ctok)
 
             fileParsed.Trigger(result, opts, ctok)
-            return Some result
-          | None ->
-            return None
+            return result
+          }
         }
       )
 
@@ -1797,7 +1803,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
       let maxConcurrency =
         Math.Max(1.0, Math.Floor((float System.Environment.ProcessorCount) * 0.75))
 
-      do! Async.Parallel(checksToPerform, int maxConcurrency) |> Async.Ignore<unit array>
+      do! Async.Parallel(checksToPerform) |> Async.Ignore<unit array>
 
     }
 
