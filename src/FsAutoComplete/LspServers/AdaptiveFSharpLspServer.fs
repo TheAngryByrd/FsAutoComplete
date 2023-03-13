@@ -94,6 +94,7 @@ module AsyncAVal =
   let mapOption f = AsyncAVal.mapSync (fun data _ -> data |> Option.map f)
 
 module AVal =
+  open FSharp.Data.Traceable
   let mapOption f = AVal.map (Option.map f)
 
   /// <summary>
@@ -140,6 +141,7 @@ module ASet =
     src |> ASet.mapToAMap mapper |> AMap.mapA (fun _ v -> v)
 
 module AMap =
+  open FSharp.Data.Traceable
   /// Adaptively looks up the given key in the map and flattens the value to be easily worked with. Note that this operation should not be used extensively since its resulting aval will be re-evaluated upon every change of the map.
   let tryFindAndFlatten (key: 'Key) (map: amap<'Key, aval<option<'Value>>>) =
     aval {
@@ -204,6 +206,80 @@ module AMap =
       |> AsyncAVal.bind (mapper k)
     )
 
+
+  /// Adaptively maps over the given map.
+  let mapBatchedWithDependencies (mapping : HashMap<'Key,'Value1> -> HashMap<'Key,'Value2 * seq<#IAdaptiveValue>>) (map : amap<'Key, 'Value1>) =
+    let mutable lastDeps: HashMap<'Key,(HashMap<#IAdaptiveValue, IDisposable>)> = HashMap.empty
+    let childUpdates = System.Collections.Generic.HashSet<'Key>()
+
+    let reader = map.GetReader()
+    AMap.ofReader(fun () ->
+      { new AbstractReader<HashMapDelta<'Key, 'Value2>>(HashMapDelta.empty) with
+          member x.Compute(token) =
+            let updatesViaChildren =
+              lock childUpdates (fun () ->
+
+                let toUpdate = reader.State |> HashMap.filter(fun k _ -> childUpdates.Contains k)
+                childUpdates.Clear()
+                toUpdate
+              )
+            let ops = reader.GetChanges token
+            let delta = ops |> HashMapDelta.toHashMap |> HashMap.union (HashMap.map(fun _ v -> Set v) updatesViaChildren)
+
+            let setOps, removeOps =
+              ((HashMap.empty, HashMap.empty), delta)
+              ||> HashMap.fold(fun (sets, rems) key next ->
+                match next with
+                | Set v -> HashMap.add key v sets, rems
+                | Remove -> sets, HashMap.add key Remove rems
+              )
+            let batchMap = setOps |> mapping
+
+            let setOps, newDeps =
+              ((HashMap.empty, HashMap.empty), batchMap)
+              ||> HashMap.fold(fun (sets, deps) k (v, newDeps)->
+                (HashMap.add k (Set v) sets), HashMap.add k (newDeps) deps
+              )
+            let deps1 =
+              (lastDeps, removeOps)
+              ||> HashMap.fold(fun state k v ->
+                  match HashMap.tryRemove k state with
+                  | Some (childDeps , newState) ->
+                    for (c, cb) in childDeps do
+                      lock c.Outputs (fun () -> cb.Dispose(); c.Outputs.Remove x) |> ignore
+                    newState
+                  | None -> state
+                  )
+
+            let deps2 =
+              (deps1, newDeps)
+              ||> HashMap.fold(fun state k v ->
+                match HashMap.tryFind k state with
+                | None ->
+                  let vs = [
+                    for d in v do
+                      d.GetValueUntyped token |> ignore
+                      d, d.AddWeakMarkingCallback(fun () -> lock childUpdates (fun () -> childUpdates.Add(k) |> ignore))
+                  ]
+                  HashMap.add k (HashMap.ofList vs) state
+
+                | Some childDeps ->
+
+                  for (c, cb) in childDeps do
+                    lock c.Outputs (fun () -> cb.Dispose(); c.Outputs.Remove x) |> ignore
+                  let vs = [
+                    for d in v do
+                      d.GetValueUntyped token |> ignore
+                      d, d.AddWeakMarkingCallback(fun () -> lock childUpdates (fun () -> childUpdates.Add(k) |> ignore))
+                  ]
+                  HashMap.add k (HashMap.ofList vs) state
+              )
+            lastDeps <- deps2
+            HashMap.union removeOps setOps
+            |> HashMapDelta  }
+    )
+
+
 [<RequireQualifiedAccess>]
 type WorkspaceChosen =
   | Sln of string<LocalPath> // TODO later when ionide supports sending specific choices instead of only fsprojs
@@ -215,7 +291,7 @@ type WorkspaceChosen =
 type AdaptiveWorkspaceChosen =
   | Sln of aval<string<LocalPath> * DateTime> // TODO later when ionide supports sending specific choices instead of only fsprojs
   | Directory of aval<string<LocalPath> * DateTime> // TODO later when ionide supports sending specific choices instead of only fsprojs
-  | Projs of aval<HashMap<string<LocalPath>, DateTime>>
+  | Projs of amap<string<LocalPath>, DateTime>
   | NotChosen
 
 type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FSharpLspClient) =
@@ -693,12 +769,17 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
   let workspacePaths: ChangeableValue<WorkspaceChosen> =
     cval WorkspaceChosen.NotChosen
 
+  let noopDisposable () =
+    {new IDisposable with
+         member this.Dispose(): unit =
+             ()}
+
   let adaptiveWorkspacePaths =
     workspacePaths
     |> AVal.map (fun wsp ->
       match wsp with
-      | WorkspaceChosen.Sln v -> projectFileChanges v |> AdaptiveWorkspaceChosen.Sln
-      | WorkspaceChosen.Directory d -> failwith "Need to use AdaptiveDirectory" |> AdaptiveWorkspaceChosen.Directory
+      | WorkspaceChosen.Sln v ->  failwith "Sln not supported" //projectFileChanges v |> AdaptiveWorkspaceChosen.Sln
+      | WorkspaceChosen.Directory d -> failwith "Need to use AdaptiveDirectory" //|> AdaptiveWorkspaceChosen.Directory
       | WorkspaceChosen.Projs projs ->
         let projChanges =
           projs
@@ -706,20 +787,19 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           |> ASet.mapAtoAMap (UMX.untag >> AdaptiveFile.GetLastWriteTimeUtc)
 
         let cb =
-          projChanges.AddCallback(fun old delta ->
+          projChanges.AddWeakCallback(fun old delta ->
             logger.info (
               Log.setMessage "Loading projects because of {delta}"
               >> Log.addContextDestructured "delta" delta
             ))
 
         projChanges
-        |> AMap.toAVal
-        |> AVal.mapDisposableTuple (fun x -> x, cb)
-        |> AdaptiveWorkspaceChosen.Projs
+        |> AdaptiveWorkspaceChosen.Projs, cb
 
-      | WorkspaceChosen.NotChosen -> AdaptiveWorkspaceChosen.NotChosen
+      | WorkspaceChosen.NotChosen -> AdaptiveWorkspaceChosen.NotChosen, noopDisposable()
 
     )
+    |> AVal.mapDisposableTuple id
 
   let clientCapabilities = cval<ClientCapabilities option> None
 
@@ -742,7 +822,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
         let! projectOptions =
           projects
-          |> AVal.mapWithAdditionalDependenies (fun projects ->
+          |> AMap.mapBatchedWithDependencies(fun projects ->
 
             projects
             |> Seq.iter (fun (proj: string<LocalPath>, _) ->
@@ -767,32 +847,41 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
                 >> Log.addContextDestructured "path" p.Properties
               )
 
-            let additionalDependencies =
+            let additionalDependencies: HashMap<string<LocalPath> , (Types.ProjectOptions * aval<string<LocalPath> * DateTime> seq)> =
 
-              [ for p in projectOptions do
-                  match p.Properties |> Seq.tryFind (fun x -> x.Name = "ProjectAssetsFile") with
-                  | Some v -> yield projectFileChanges (UMX.tag v.Value)
-                  | None -> ()
+              [
+                for p in projectOptions do
+                  let deps = [
+                    match p.Properties |> Seq.tryFind (fun x -> x.Name = "ProjectAssetsFile") with
+                    | Some v -> yield projectFileChanges (UMX.tag v.Value)
+                    | None -> ()
 
-                  let objPath =
-                    p.Properties
-                    |> Seq.tryFind (fun x -> x.Name = "BaseIntermediateOutputPath")
-                    |> Option.map (fun v -> v.Value)
+                    let objPath =
+                      p.Properties
+                      |> Seq.tryFind (fun x -> x.Name = "BaseIntermediateOutputPath")
+                      |> Option.map (fun v -> v.Value)
 
-                  let isWithinObjFolder (file: string) =
-                    match objPath with
-                    | None -> true // if no obj folder provided assume we should track this file
-                    | Some objPath -> file.Contains(objPath)
+                    let isWithinObjFolder (file: string) =
+                      match objPath with
+                      | None -> true // if no obj folder provided assume we should track this file
+                      | Some objPath -> file.Contains(objPath)
 
-                  match p.Properties |> Seq.tryFind (fun x -> x.Name = "MSBuildAllProjects") with
-                  | Some v ->
-                    yield!
-                      v.Value.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                      |> Array.filter (fun x -> x.EndsWith(".props") && isWithinObjFolder x)
-                      |> Array.map (UMX.tag >> projectFileChanges)
-                  | None -> () ]
+                    match p.Properties |> Seq.tryFind (fun x -> x.Name = "MSBuildAllProjects") with
+                    | Some v ->
+                      yield!
+                        v.Value.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                        |> Array.filter (fun x -> x.EndsWith(".props") && isWithinObjFolder x)
+                        |> Array.map (UMX.tag >> projectFileChanges)
+                    | None -> ()
+                  ]
+                  (UMX.tag p.ProjectFileName), (p, Seq.ofList deps)
+              ]
+              |> HashMap.ofList
 
-            projectOptions, additionalDependencies)
+            additionalDependencies
+          )
+          |>AMap.toAVal
+          |> AVal.map(HashMap.toValueList)
 
         and! checker = checker
         checker.ClearCaches() // if we got new projects assume we're gonna need to clear caches
@@ -1006,16 +1095,13 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
   let isFileOpen file =
     openFiles |> AMap.tryFindA file |> AVal.map (Option.isSome)
 
-  let findFileInOpenFiles' file =
-    openFilesWithChanges |> AMap.tryFindA file
+  let findOpenFileWithChanges file =  openFilesWithChanges |> AMap.tryFindA file
 
-  let findFileInOpenFiles file = findFileInOpenFiles' file
+  let forceFindFileWithChanges filePath =
+    findOpenFileWithChanges filePath |> AVal.force
 
-  let forceFindOpenFile filePath =
-    findFileInOpenFiles filePath |> AVal.force
-
-  let forceFindOpenFileOrRead file =
-    findFileInOpenFiles file
+  let forceFindOpenWithChangesOrRead file =
+    findOpenFileWithChanges file
     |> AVal.force
     |> Option.orElseWith (fun () ->
       // TODO: Log how many times this kind area gets hit and possibly if this should be rethought
@@ -1050,14 +1136,23 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
         None)
     |> Result.ofOption (fun () -> $"Could not read file: {file}")
 
+  let openFilesWithChangesFlat = openFilesWithChanges |> AMap.mapA(fun k v -> v)
+
+  let fileystem (f : string<LocalPath>) =
+    if Utils.isFileWithFSharp %f then
+      let find (f) =
+        openFilesWithChangesFlat
+        |> AMap.tryFind f
+        |> AVal.force
+      Debug.measure $"forceFindOpenFile {f}" (fun () -> find f)
+    else None
 
 
-  do
-    FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem <-
-      FileSystem(FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem, (findFileInOpenFiles >> AVal.force))
+  do FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem <-
+      FileSystem(FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem, fileystem)
 
   let forceFindSourceText filePath =
-    forceFindOpenFileOrRead filePath |> Result.map (fun f -> f.Lines)
+    forceFindOpenWithChangesOrRead filePath |> Result.map (fun f -> f.Lines)
 
 
   let openFilesToChangesAndProjectOptions =
@@ -1191,7 +1286,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     }
 
 
-  let parseAndCheckFile (checker: FSharpCompilerServiceChecker) (file: VolatileFile) opts config =
+  let parseAndCheckFile (checker: FSharpCompilerServiceChecker) (file: VolatileFile) opts config shouldCache =
     async {
       let tags =
         [ SemanticConventions.fsac_sourceCodePath, box (UMX.untag file.Lines.FileName)
@@ -1220,7 +1315,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
       cts.CancelAfter(TimeSpan.FromSeconds(60.))
 
       let! result =
-        checker.ParseAndCheckFileInProject(file.Lines.FileName, (file.Lines.GetHashCode()), file.Lines, opts)
+        checker.ParseAndCheckFileInProject(file.Lines.FileName, (file.Lines.GetHashCode()), file.Lines, opts, shouldCache)
         // |> Async.withCancellation cts.Token
         |> Debug.measureAsync $"checker.ParseAndCheckFileInProject - {file.Lines.FileName}"
 
@@ -1276,11 +1371,13 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           >> Log.addContextDestructured "file" filePath
         )
 
+        do! Async.SwitchToNewThread() // FSharp.Data.Adaptive has many locks which can cause threadpool exhaustion
+
         let checker = checker |> AVal.force
         let config = config |> AVal.force
 
-        match forceFindOpenFileOrRead filePath with
-        | Ok(fileInfo) -> return! parseAndCheckFile checker fileInfo opts config |> Async.Ignore
+        match forceFindOpenWithChangesOrRead filePath with
+        | Ok(fileInfo) -> return! parseAndCheckFile checker fileInfo opts config false |> Async.Ignore
         | _ -> ()
       with e ->
 
@@ -1344,7 +1441,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             and! cts = tryGetOpenFileToken file
 
             return!
-                parseAndCheckFile checker info opts config
+                parseAndCheckFile checker info opts config true
                 |> Async.withCancellation cts.Token
                 |> fun work -> Async.StartImmediateAsTask(work, ctok)
           }
@@ -1453,7 +1550,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     { new ICodeGenerationService with
         member x.TokenizeLine(file, i) =
           option {
-            let! (text) = forceFindOpenFileOrRead file |> Option.ofResult
+            let! (text) = forceFindOpenWithChangesOrRead file |> Option.ofResult
 
             try
               let! line = text.Lines.GetLine(Position.mkPos i 0)
@@ -1465,7 +1562,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
         member x.GetSymbolAtPosition(file, pos) =
           option {
             try
-              let! (text) = forceFindOpenFileOrRead file |> Option.ofResult
+              let! (text) = forceFindOpenWithChangesOrRead file |> Option.ofResult
               let! line = tryGetLineStr pos text.Lines |> Option.ofResult
               return! Lexer.getSymbol pos.Line pos.Column line SymbolLookupKind.Fuzzy [||]
             with _ ->
@@ -1477,7 +1574,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             let! symbol = x.GetSymbolAtPosition(fileName, pos)
 
             if symbol.Kind = kind then
-              let! (text) = forceFindOpenFileOrRead fileName |> Option.ofResult
+              let! (text) = forceFindOpenWithChangesOrRead fileName |> Option.ofResult
               let! line = tryGetLineStr pos text.Lines |> Option.ofResult
               let! tyRes = forceGetTypeCheckResults fileName |> Async.map(Option.ofResult)
               let symbolUse = tyRes.TryGetSymbolUse pos line
@@ -1494,7 +1591,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
     let tryGetParseResultsForFile filePath pos =
       asyncResult {
-        let! (file) = forceFindOpenFileOrRead filePath
+        let! (file) = forceFindOpenWithChangesOrRead filePath
         let! lineStr = file.Lines |> tryGetLineStr pos
         and! tyRes = forceGetTypeCheckResults filePath
         return tyRes, lineStr, file.Lines
@@ -2268,7 +2365,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
           let file =
             option {
-              let! oldFile = forceFindOpenFile filePath
+              let! oldFile = forceFindFileWithChanges filePath
               let oldFile = p.Text |> Option.map (oldFile.SetText) |> Option.defaultValue oldFile
               return oldFile.UpdateTouched()
             }
@@ -2315,7 +2412,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
           let (filePath, pos) = getFilePathAndPosition p
 
-          let! (namedText2) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText2) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
 
           let! lineStr2 = namedText2.Lines |> tryGetLineStr pos |> Result.ofStringErr
 
@@ -2342,7 +2439,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             let getCompletions =
               asyncResult {
 
-                let! (namedText) = forceFindOpenFileOrRead filePath
+                let! (namedText) = forceFindOpenWithChangesOrRead filePath
                 let! lineStr = namedText.Lines |> tryGetLineStr pos
                 and! typeCheckResults = forceGetTypeCheckResultsStale filePath
 
@@ -2545,7 +2642,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
 
@@ -2609,7 +2706,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResultsStale filePath |> AsyncResult.ofStringErr
 
@@ -2692,7 +2789,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
         )
 
         let (filePath, pos) = getFilePathAndPosition p
-        let! namedText = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+        let! namedText = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
         let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
         let! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
@@ -2715,7 +2812,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
@@ -2745,7 +2842,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
               let file: string<LocalPath> = kvp.Key
 
               let version =
-                forceFindOpenFileOrRead file
+                forceFindOpenWithChangesOrRead file
                 |> Option.ofResult
                 |> Option.bind (fun (f) -> f.Version)
 
@@ -2782,7 +2879,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
 
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
@@ -2813,7 +2910,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
           let (filePath, pos) = getFilePathAndPosition p
 
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
           let! decl = tyRes.TryFindTypeDeclaration pos lineStr |> AsyncResult.ofStringErr
@@ -2842,7 +2939,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = tryGetLineStr pos namedText.Lines |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
@@ -2878,7 +2975,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = tryGetLineStr pos namedText.Lines |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
@@ -2915,7 +3012,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = tryGetLineStr pos namedText.Lines |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
@@ -3190,7 +3287,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             )
 
           let tryGetFileVersion filePath =
-            forceFindOpenFileOrRead filePath
+            forceFindOpenWithChangesOrRead filePath
             |> Option.ofResult
             |> Option.bind (fun (f) -> f.Version)
 
@@ -3602,7 +3699,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let filePath = p.TextDocument.GetFilePath() |> Utils.normalizePath
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
 
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
 
@@ -3707,7 +3804,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let filePath = p.TextDocument.GetFilePath() |> Utils.normalizePath
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
 
 
           let! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
@@ -3911,7 +4008,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
 
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
@@ -3945,7 +4042,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             FSharp.Compiler.Text.Position.mkPos (p.Position.Line) (p.Position.Character + 2)
 
           let filePath = p.TextDocument.GetFilePath() |> Utils.normalizePath
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
 
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
@@ -3979,7 +4076,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
 
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
@@ -4347,7 +4444,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
           let! t = Commands.Help tyRes pos lineStr |> Result.ofCoreResponse
@@ -4376,7 +4473,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           )
 
           let (filePath, pos) = getFilePathAndPosition p
-          let! (namedText) = forceFindOpenFileOrRead filePath |> Result.ofStringErr
+          let! (namedText) = forceFindOpenWithChangesOrRead filePath |> Result.ofStringErr
           let! lineStr = namedText.Lines |> tryGetLineStr pos |> Result.ofStringErr
           and! tyRes = forceGetTypeCheckResults filePath |> AsyncResult.ofStringErr
           lastFSharpDocumentationTypeCheck <- Some tyRes

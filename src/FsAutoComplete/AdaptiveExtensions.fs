@@ -39,17 +39,73 @@ type internal RefCountingTaskCreator<'a>(create : CancellationToken -> Task<'a>)
         )
 
 
-and [<Struct>] CancelableTask<'a>(cancel : unit -> unit, real : Task<'a>) =
+// and [<Struct>] CancelableTask<'a>(cancel : unit -> unit, real : Task<'a>) =
 
-    member x.GetAwaiter() = real.GetAwaiter()
+//     // member x.GetAwaiter() = real.GetAwaiter()
+//     member x.Cancel() =
+//         cancel()
+//     member x.Task =
+//         real
+
+and CancelableTask<'a>(cancel : unit -> unit, real : Task<'a>) =
+    let cts = new CancellationTokenSource()
+
+    let output =
+        if real.IsCompleted then
+            real
+        else
+            let tcs = new TaskCompletionSource<'a>()
+            let s =
+                cts.Token.Register(fun () ->
+                    tcs.TrySetCanceled() |> ignore
+
+                )
+            real.ContinueWith(fun (t : Task<'a>) ->
+                s.Dispose()
+                if t.IsFaulted then
+                    tcs.TrySetException(t.Exception)
+                elif t.IsCanceled then
+                    tcs.TrySetCanceled()
+                else
+                    tcs.TrySetResult(t.Result)
+            ) |> ignore
+
+            tcs.Task
+
+
     member x.Cancel() =
         cancel()
-    member x.Task =
-        real
+        cts.Cancel()
 
+    member x.Task =
+        output
 type asyncaval<'a> =
     inherit IAdaptiveObject
     abstract GetValue : AdaptiveToken -> CancelableTask<'a>
+
+module CancellableTask =
+  let inline ofAdaptiveCancellableTask (ct : CancelableTask<_>) =
+    fun (ctok : CancellationToken) ->
+      task {
+        use _ = ctok.Register(fun () -> ct.Cancel())
+        return! ct.Task
+      }
+module Async =
+  let inline ofAdaptiveCancellableTask (ct : CancelableTask<_>) =  async {
+    let! ctok = Async.CancellationToken
+    use _ = ctok.Register(fun () -> ct.Cancel())
+    return! ct.Task |> Async.AwaitTask
+  }
+
+[<AutoOpenAttribute>]
+module Extensions =
+
+  type IcedTasks.CancellableTasks.CancellableTaskBuilderBase with
+
+    member inline x.Source(ct : CancelableTask<_>) =
+      fun ctok ->
+        (CancellableTask.ofAdaptiveCancellableTask ct ctok).GetAwaiter()
+
 
 module AsyncAVal =
 
@@ -58,10 +114,15 @@ module AsyncAVal =
 
     let forceAsync (value : asyncaval<_>) =
       async {
-        let! ctok = Async.CancellationToken
         let ct = value.GetValue(AdaptiveToken.Top)
-        use _ = ctok.Register(fun () -> ct.Cancel())
-        return! ct.Task |> Async.AwaitTask
+        return! Async.ofAdaptiveCancellableTask ct
+      }
+
+
+    let forceCancellableTask (value : asyncaval<_>) =
+      cancellableTask {
+        let ct = value.GetValue(AdaptiveToken.Top)
+        return! ct
       }
 
     type ConstantVal<'a>(value : CancelableTask<'a>) =
@@ -125,14 +186,14 @@ module AsyncAVal =
                 if x.OutOfDate || Option.isNone cache then
                     let ref =
                         RefCountingTaskCreator(cancellableTask {
-                            let! ct = CancellableTask.getCancellationToken ()
+                            // let! ct = CancellableTask.getCancellationToken ()
                             let it = input.GetValue t
-                            let s = ct.Register(fun () -> it.Cancel())
-                            try
-                                let! i = it
-                                return! mapping i ct
-                            finally
-                                s.Dispose()
+                            // let s = ct.Register(fun () -> it.Cancel())
+                            // try
+                            let! i = it
+                            return! mapping i
+                            // finally
+                            //     s.Dispose()
                             }
                         )
                     cache <- Some ref

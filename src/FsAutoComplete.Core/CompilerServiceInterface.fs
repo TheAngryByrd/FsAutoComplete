@@ -36,7 +36,7 @@ type FSharpCompilerServiceChecker(hasAnalyzers) =
   // This is used to hold previous check results for autocompletion.
   // We can't seem to rely on the checker for previous cached versions
   let memoryCache () =
-    new MemoryCache(MemoryCacheOptions(SizeLimit = Nullable<_>(2000L)))
+    new MemoryCache(MemoryCacheOptions(SizeLimit = Nullable<_>(200L), ExpirationScanFrequency = TimeSpan.FromMinutes(1.)))
 
   let mutable lastCheckResults: IMemoryCache = memoryCache ()
 
@@ -258,9 +258,10 @@ type FSharpCompilerServiceChecker(hasAnalyzers) =
     let path = UMX.untag fn
     checker.ParseFile(path, source, fpo)
 
-  member __.ParseAndCheckFileInProject(filePath: string<LocalPath>, version, source: ISourceText, options) =
+  member __.ParseAndCheckFileInProject(filePath: string<LocalPath>, version, source: ISourceText, options, ?shouldCache : bool) =
     asyncResult {
       let opName = sprintf "ParseAndCheckFileInProject - %A" filePath
+      let shouldCache = defaultArg shouldCache true
 
       checkerLogger.info (Log.setMessage "{opName}" >> Log.addContextDestructured "opName" opName)
 
@@ -292,9 +293,11 @@ type FSharpCompilerServiceChecker(hasAnalyzers) =
           let ops =
             MemoryCacheEntryOptions()
               .SetSize(1)
-              .SetSlidingExpiration(TimeSpan.FromMinutes(5.))
-
-          return lastCheckResults.Set(filePath, r, ops)
+              .SetSlidingExpiration(TimeSpan.FromMinutes(1.))
+          if shouldCache then
+            return lastCheckResults.Set(filePath, r, ops)
+          else
+            return r
       with ex ->
         return! ResultOrString.Error(ex.ToString())
     }
