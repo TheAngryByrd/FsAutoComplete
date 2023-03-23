@@ -495,22 +495,23 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
   let getLastUTCChangeForFile (filePath: string<LocalPath>) =
     AdaptiveFile.GetLastWriteTimeUtc(UMX.untag filePath)
-    |> AVal.map (fun writeTime -> filePath, writeTime)
 
-  let addAValLogging cb (aval: aval<_>) =
-    let cb = aval.AddMarkingCallback(cb)
-    aval |> AVal.mapDisposableTuple (fun x -> x, cb)
+  let addAValLogging callback (aval: aval<_>) =
+    aval |> AVal.mapDisposableTuple (fun x -> x, aval.AddWeakMarkingCallback(callback))
+
+  let projectChanged = new Subjects.Subject<_>()
+  do disposables.Add projectChanged
 
   let projectFileChanges project (filePath: string<LocalPath>) =
     let file = getLastUTCChangeForFile filePath
 
     let logMsg () =
       logger.info (Log.setMessageI $"Loading {project:project} because of {filePath:filePath}")
+      projectChanged.OnNext ()
 
     file |> addAValLogging logMsg
 
   let loader = cval<Ionide.ProjInfo.IWorkspaceLoader> workspaceLoader
-
 
 
   let binlogConfig =
@@ -538,23 +539,16 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     workspacePaths
     |> AVal.map (fun wsp ->
       match wsp with
-      | WorkspaceChosen.Sln v -> projectFileChanges v v |> AdaptiveWorkspaceChosen.Sln, noopDisposable
+      | WorkspaceChosen.Sln v -> projectFileChanges v v |> AVal.map(fun z -> v, z) |> AdaptiveWorkspaceChosen.Sln, noopDisposable
       | WorkspaceChosen.Directory d ->
         failwith "Need to use AdaptiveDirectory" |> AdaptiveWorkspaceChosen.Directory, noopDisposable
       | WorkspaceChosen.Projs projs ->
         let projChanges =
           projs
-          |> ASet.ofSeq
-          |> ASet.mapAtoAMap (UMX.untag >> AdaptiveFile.GetLastWriteTimeUtc)
+          |> ASet.ofHashSet
+          |> ASet.mapAtoAMap (fun p -> projectFileChanges p p )
 
-        let cb =
-          projChanges.AddCallback(fun old delta ->
-            logger.info (
-              Log.setMessage "Loading projects because of {delta}"
-              >> Log.addContextDestructured "delta" delta
-            ))
-
-        projChanges |> AdaptiveWorkspaceChosen.Projs, cb
+        projChanges |> AdaptiveWorkspaceChosen.Projs, noopDisposable
 
       | WorkspaceChosen.NotChosen -> AdaptiveWorkspaceChosen.NotChosen, noopDisposable
 
@@ -716,7 +710,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
   do
     // Reload Projects with some debouncing if `loadedProjectOptions` is out of date.
-    AVal.Observable.onWeakMarking loadedProjectOptions
+    projectChanged
     |> Observable.throttleOn Concurrency.NewThreadScheduler.Default (TimeSpan.FromMilliseconds(200.))
     |> Observable.observeOn Concurrency.NewThreadScheduler.Default
     |> Observable.subscribe (forceLoadProjects >> ignore)
