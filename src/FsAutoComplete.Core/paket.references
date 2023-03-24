@@ -1,4 +1,4 @@
-FSharp.Compiler.Service
+# FSharp.Compiler.Service
 FSharp.Analyzers.SDK
 Newtonsoft.Json
 ICSharpCode.Decompiler

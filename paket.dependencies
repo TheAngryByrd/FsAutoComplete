@@ -13,7 +13,7 @@ github TheAngryByrd/FsLibLog:64f118ae8df2f2944ef69758052cb3b148b87e79 src/FsLibL
 github TheAngryByrd/FsOpenTelemetry src/FsOpenTelemetry/FsOpenTelemetry.fs
 
 nuget Fantomas.Client
-nuget FSharp.Compiler.Service
+# nuget FSharp.Compiler.Service
 nuget Ionide.ProjInfo
 nuget Ionide.ProjInfo.FCS
 nuget Ionide.ProjInfo.ProjectSystem

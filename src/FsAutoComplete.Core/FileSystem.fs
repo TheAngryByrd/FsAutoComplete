@@ -476,11 +476,12 @@ type FileSystem(actualFs: IFileSystem, tryFindFile: string<LocalPath> -> Volatil
 
     member _.GetLastWriteTimeShim(filename: string) =
       let result =
-        filename
-        |> Utils.normalizePath
-        |> tryFindFile
-        |> Option.map (fun f -> f.Touched)
-        |> Option.defaultWith (fun () -> actualFs.GetLastWriteTimeShim filename)
+        actualFs.GetLastWriteTimeShim filename
+        // filename
+        // |> Utils.normalizePath
+        // |> tryFindFile
+        // |> Option.map (fun f -> f.Touched)
+        // |> Option.defaultWith (fun () -> actualFs.GetLastWriteTimeShim filename)
 
       // fsLogger.debug (
       //   Log.setMessage "GetLastWriteTimeShim of `{path}` - {date} "
@@ -510,16 +511,21 @@ type FileSystem(actualFs: IFileSystem, tryFindFile: string<LocalPath> -> Volatil
       actualFs.GetFullFilePathInDirectoryShim dir f
 
     member _.OpenFileForReadShim(filePath: string, useMemoryMappedFile, shouldShadowCopy) =
-      filePath
-      |> Utils.normalizePath
-      |> getContent
-      |> Option.map (fun bytes -> new MemoryStream(bytes) :> Stream)
-      |> Option.defaultWith (fun _ ->
-        actualFs.OpenFileForReadShim(
+      // filePath
+      // |> Utils.normalizePath
+      // |> getContent
+      // |> Option.map (fun bytes -> new MemoryStream(bytes) :> Stream)
+      // |> Option.defaultWith (fun _ ->
+      //   actualFs.OpenFileForReadShim(
+      //     filePath,
+      //     ?useMemoryMappedFile = useMemoryMappedFile,
+      //     ?shouldShadowCopy = shouldShadowCopy
+      //   ))
+      actualFs.OpenFileForReadShim(
           filePath,
           ?useMemoryMappedFile = useMemoryMappedFile,
           ?shouldShadowCopy = shouldShadowCopy
-        ))
+        )
 
     member _.OpenFileForWriteShim(filePath: string, fileMode, fileAccess, fileShare) =
       actualFs.OpenFileForWriteShim(filePath, ?fileMode = fileMode, ?fileAccess = fileAccess, ?fileShare = fileShare)

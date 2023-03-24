@@ -7,7 +7,9 @@
   <ItemGroup>
     <ProjectReference Include="..\FsAutoComplete.Logging\FsAutoComplete.Logging.fsproj" />
     <TrimmerRootAssembly Include="FsAutoComplete.Core" />
+    <ProjectReference Include="C:\Users\jimmy\Repositories\public\TheAngryByrd\fsharp\src\Compiler\FSharp.Compiler.Service.fsproj" />
   </ItemGroup>
+
   <ItemGroup>
     <Compile Include="AdaptiveExtensions.fs" />
     <Compile Include="Consts.fs" />

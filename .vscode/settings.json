@@ -14,5 +14,6 @@
       "https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/github-workflow.json": ".github/workflows/*"
     },
     "editor.inlayHints.enabled": "offUnlessPressed",
-    "FSharp.enableAdaptiveLspServer": true
+    "FSharp.enableAdaptiveLspServer": true,
+    "FSharp.codeLenses.references.enabled": false
 }
