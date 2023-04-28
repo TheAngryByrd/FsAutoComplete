@@ -282,8 +282,8 @@ let private tryFindPatternMatchExprInParsedInput (pos: Position) (parsedInput: P
       | SynExpr.LibraryOnlyUnionCaseFieldSet _ -> None
       | SynExpr.ArbitraryAfterError(_debugStr, _range) -> None
 
-      | SynExpr.FromParseError(synExpr, _range)
-      | SynExpr.DiscardAfterMissingQualificationAfterDot(synExpr, _range) -> walkExpr synExpr
+      | SynExpr.FromParseError(expr = synExpr)
+      | SynExpr.DiscardAfterMissingQualificationAfterDot(expr = synExpr) -> walkExpr synExpr
 
       | _ -> None)
 

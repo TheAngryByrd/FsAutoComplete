@@ -502,7 +502,15 @@ type FileSystem(actualFs: IFileSystem, tryFindFile: string<LocalPath> -> Volatil
     member _.EnumerateDirectoriesShim p = actualFs.EnumerateDirectoriesShim p
     member _.EnumerateFilesShim(p, pat) = actualFs.EnumerateFilesShim(p, pat)
     member _.FileDeleteShim f = actualFs.FileDeleteShim f
-    member _.FileExistsShim f = actualFs.FileExistsShim f
+    member _.FileExistsShim f =
+      let lol =
+        f
+        |> Utils.normalizePath
+        |> tryFindFile
+        |> Option.isSome
+      if lol then lol
+      else
+        actualFs.FileExistsShim f
     member _.GetCreationTimeShim p = actualFs.GetCreationTimeShim p
     member _.GetDirectoryNameShim p = actualFs.GetDirectoryNameShim p
 
@@ -525,6 +533,8 @@ type FileSystem(actualFs: IFileSystem, tryFindFile: string<LocalPath> -> Volatil
       actualFs.OpenFileForWriteShim(filePath, ?fileMode = fileMode, ?fileAccess = fileAccess, ?fileShare = fileShare)
 
     member _.AssemblyLoader = actualFs.AssemblyLoader
+    member this.ChangeExtensionShim(path: string, extension: string): string =
+        actualFs.ChangeExtensionShim(path, extension)
 
 module Symbol =
   open FSharp.Compiler.Symbols

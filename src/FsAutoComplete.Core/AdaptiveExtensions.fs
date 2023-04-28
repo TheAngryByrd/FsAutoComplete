@@ -817,3 +817,15 @@ module AMapAsync =
       | Some x -> return! x
       | None -> return None
     }
+
+  let forceAsyncAVal(map: amap<'Key, asyncaval<'Value>>) =
+    map
+    |> AMap.map (fun _ v -> v |> AsyncAVal.force)
+    |> AMap.force
+    |> HashMap.toArray
+    |> Array.map(fun (k,v) ->
+      task {
+        let! v2 = v.Task
+        return (k,v2)
+      })
+    |> Task.WhenAll

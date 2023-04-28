@@ -11,8 +11,9 @@ strategy: min
 lowest_matching: true
 
 
+nuget FSharp.Core 7.0.300-beta.23176.1
 nuget Fantomas.Client >= 0.9
-nuget FSharp.Compiler.Service >= 43.7.200
+nuget FSharp.Compiler.Service >= 43.7.300-preview.23167.4
 nuget Ionide.ProjInfo >= 0.61.3
 nuget Ionide.ProjInfo.FCS >= 0.61.3
 nuget Ionide.ProjInfo.ProjectSystem >= 0.61.3

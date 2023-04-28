@@ -37,6 +37,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FsAutoComplete.Core\FsAutoComplete.Core.fsproj" />
+    <ProjectReference Include="C:\Users\jimmy\Repositories\public\TheAngryByrd\telplin\src\Telplin.Core\Telplin.Core.fsproj"/>
   </ItemGroup>
   <PropertyGroup Condition=" '$(PackAsTool)' == 'true' ">
     <AssemblyName>fsautocomplete</AssemblyName>

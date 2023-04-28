@@ -40,6 +40,7 @@ open FsAutoComplete.LspHelpers
 open FsAutoComplete.UnionPatternMatchCaseGenerator
 open System.Collections.Concurrent
 open System.Diagnostics
+open Telplin.Common
 
 [<RequireQualifiedAccess>]
 type WorkspaceChosen =
@@ -818,6 +819,9 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     }
     |> AMap.ofAVal
 
+
+
+
   let fantomasLogger = LogProvider.getLoggerByName "Fantomas"
   let fantomasService: FantomasService = new LSPFantomasService() :> FantomasService
 
@@ -999,14 +1003,27 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     }
     |> Async.map (Result.ofOption (fun () -> $"Could not read file: {file}"))
 
+  let inMemorySignatures : ChangeableHashMap<string<LocalPath>, VolatileFile> = ChangeableHashMap()
+
   do
     let fileshimChanges = openFilesWithChanges |> AMap.mapA (fun _ v -> v)
 
     let filesystemShim file =
+
       // GetLastWriteTimeShim gets called _alot_ and when we do checks on save we use Async.Parallel for type checking.
       // Adaptive uses lots of locks under the covers, so many threads can get blocked waiting for data.
       // flattening openFilesWithChanges makes this check a lot quicker as it's not needing to recalculate each value.
-      fileshimChanges |> AMap.force |> HashMap.tryFind file
+      fileshimChanges
+      |> AMap.force
+      |> HashMap.tryFind file
+      |> Option.orElseWith(fun () ->
+        if file |> UMX.untag |> Utils.isSignatureFile  then
+          let sigs = inMemorySignatures |> AMap.force
+
+          sigs |> HashMap.tryFind file
+        else
+          None
+      )
 
     FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem <-
       FileSystem(FSharp.Compiler.IO.FileSystemAutoOpens.FileSystem, filesystemShim)
@@ -1084,6 +1101,27 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
           return file, projs
       })
+
+
+  let openFilesToChangesAndProjectOptions2 =
+
+    openFilesToChangesAndProjectOptions
+    |> AMapAsync.mapAsyncAVal(fun file  (changes, projs) ct ->
+      asyncAVal {
+        return! taskOption {
+          let! proj = selectProject projs
+          let signature = Telplin.Core.TelplinApi.MkSignature(changes.Lines.ToString(), proj)
+          let signatureFilePath = IO.Path.ChangeExtension(UMX.untag file, ".fsi")
+          // let lol = { proj with SourceFiles  = [|signatureFilePath|]}
+
+
+
+          transact(fun () -> inMemorySignatures.Add(UMX.tag signatureFilePath, VolatileFile.Create(UMX.tag signatureFilePath, signature, None)) |> ignore)
+          return signature
+        }
+
+      }
+    )
 
   let allProjectOptions =
     let wins =
@@ -1761,6 +1799,18 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
         |> Array.distinct
     }
 
+  let injectSignatures (proj : FSharpProjectOptions) =
+    let allInMemorySigs = inMemorySignatures |> AMap.force
+    let sourceFiles = [|
+      for sourceFile in proj.SourceFiles do
+        let sigName = IO.Path.ChangeExtension(sourceFile, ".fsi") |> UMX.tag
+        match allInMemorySigs.TryFind sigName with
+        | Some _ ->
+          (sigName |> UMX.untag)
+        | None -> ()
+        sourceFile
+    |]
+    {proj with SourceFiles = sourceFiles}
 
   let bypassAdaptiveAndCheckDepenenciesForFile (filePath: string<LocalPath>) =
     async {
@@ -1785,10 +1835,19 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           0u
         else
           ((float numerator) / (float denominator)) * 100.0 |> uint32
+      let allDependentFiles =
+        Array.concat [| dependentFiles; dependentProjects |]
+
+      let allDependentFiles=
+        allDependentFiles
+        |> Array.map(fun (proj, file) ->
+          injectSignatures proj,  file
+
+        )
 
       let checksToPerform =
         let innerChecks =
-          Array.concat [| dependentFiles; dependentProjects |]
+          allDependentFiles
           |> Array.filter (fun (_, file) ->
             file.Contains "AssemblyInfo.fs" |> not
             && file.Contains "AssemblyAttributes.fs" |> not)
@@ -2125,6 +2184,8 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           return ()
       }
 
+
+
     override __.TextDocumentDidOpen(p: DidOpenTextDocumentParams) =
       async {
         let tags = [ "DidOpenTextDocumentParams", box p ]
@@ -2146,6 +2207,10 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             let file = VolatileFile.Create(filePath, doc.Text, (Some doc.Version))
             updateOpenFiles file
             let! _ = forceGetTypeCheckResults filePath
+            let! signatures = openFilesToChangesAndProjectOptions2 |> AMapAsync.forceAsyncAVal |> Async.AwaitTask
+
+            let mutable sigs = signatures
+
             return ()
         with e ->
           trace |> Tracing.recordException e
@@ -2203,6 +2268,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
           updateTextchanges filePath (p, DateTime.UtcNow)
 
           let! _ = forceGetTypeCheckResults filePath
+          let! signatures = openFilesToChangesAndProjectOptions2 |> AMapAsync.forceAsyncAVal |> Async.AwaitTask
 
 
           return ()
@@ -2248,6 +2314,9 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
             textChanges.Remove filePath |> ignore<bool>)
 
           let! _ = forceGetTypeCheckResults filePath
+
+          let! signatures = openFilesToChangesAndProjectOptions2 |> AMapAsync.forceAsyncAVal |> Async.AwaitTask
+
           do! bypassAdaptiveAndCheckDepenenciesForFile filePath
           do! lspClient.CodeLensRefresh()
 
