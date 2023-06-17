@@ -257,6 +257,9 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     let checkUnusedOpens =
       async {
         try
+
+          use progressReport = new ServerProgressReport(lspClient)
+          do! progressReport.Begin($"Check Unused Opens for: {tyRes.FileName}")
           let! ct = Async.CancellationToken
 
           let! unused =
@@ -270,6 +273,8 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     let checkUnusedDeclarations =
       async {
         try
+          use progressReport = new ServerProgressReport(lspClient)
+          do! progressReport.Begin($"Check Unused Declarations for: {tyRes.FileName}")
           let! ct = Async.CancellationToken
           let isScript = Utils.isAScript (UMX.untag filePath)
           let! unused = UnusedDeclarations.getUnusedDeclarations (tyRes.GetCheckResults, isScript)
@@ -283,6 +288,8 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
     let checkSimplifiedNames =
       async {
         try
+          use progressReport = new ServerProgressReport(lspClient)
+          do! progressReport.Begin($"Check Simplified Names for: {tyRes.FileName}")
           let getSourceLine lineNo =
             (source: ISourceText).GetLineString(lineNo - 1)
 
@@ -676,7 +683,7 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
         let! projectOptions =
           projects
-          |> AMap.mapWithAdditionalDependenies (fun projects ->
+          |> AMap.mapWithAdditionalDependencies (fun projects ->
 
             projects
             |> Seq.iter (fun (proj: string<LocalPath>, _) ->
@@ -1799,11 +1806,11 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
         innerChecks
         |> Array.map (fun (proj, file) ->
           let file = UMX.tag file
-
+          resetCancellationToken file
           let token =
-            tryGetOpenFileToken filePath
+            tryGetOpenFileToken file
             |> Option.map (fun cts -> cts.Token)
-            |> Option.defaultWith (fun () -> CancellationToken.None)
+            |> Option.defaultWith (fun () -> failwith $"No token found for {file}")
 
           bypassAdaptiveTypeCheck (file) (proj)
           |> Async.withCancellationSafe (fun () -> token)
@@ -1831,6 +1838,24 @@ type AdaptiveFSharpLspServer(workspaceLoader: IWorkspaceLoader, lspClient: FShar
 
     }
 
+  member this.ForceGarbageCollection (_) = asyncResult {
+
+    // why 4? because there are 3 generations of garbage collection and objects can be moved to the next generation on each collection
+    // Finally, we do one more for good luck
+    for x in [1..4] do
+      Runtime.GCSettings.LargeObjectHeapCompactionMode <- Runtime.GCLargeObjectHeapCompactionMode.CompactOnce
+      GC.Collect()
+      GC.WaitForPendingFinalizers()
+
+    return Some {PlainNotification.Content = ""}
+  }
+
+  member this.FSharpClearTypeCheckCache (_) = asyncResult {
+      let checker = checker |> AVal.force
+      checker.ClearCaches()
+      let! _ = this.ForceGarbageCollection (obj())
+      return Some {PlainNotification.Content = ""}
+  }
 
   member private x.handleSemanticTokens (filePath: string<LocalPath>) range : AsyncLspResult<SemanticTokens option> =
     asyncResult {
@@ -4829,6 +4854,8 @@ module AdaptiveFSharpLspServer =
       |> Map.add "fsharp/loadAnalyzers" (serverRequestHandling (fun s p -> s.LoadAnalyzers(p)))
       // |> Map.add "fsharp/fsharpLiterate" (serverRequestHandling (fun s p -> s.FSharpLiterate(p) ))
       |> Map.add "fsharp/pipelineHint" (serverRequestHandling (fun s p -> s.FSharpPipelineHints(p)))
+      |> Map.add "fsharp/clearTypeCheckCache" (serverRequestHandling (fun s p -> (s :?> AdaptiveFSharpLspServer).FSharpClearTypeCheckCache(p)))
+      |> Map.add "fsharp/forceGarbageCollection" (serverRequestHandling (fun s p -> (s :?> AdaptiveFSharpLspServer).ForceGarbageCollection(p)))
       |> Map.add "fsproj/moveFileUp" (serverRequestHandling (fun s p -> s.FsProjMoveFileUp(p)))
       |> Map.add "fsproj/moveFileDown" (serverRequestHandling (fun s p -> s.FsProjMoveFileDown(p)))
       |> Map.add "fsproj/addFileAbove" (serverRequestHandling (fun s p -> s.FsProjAddFileAbove(p)))
