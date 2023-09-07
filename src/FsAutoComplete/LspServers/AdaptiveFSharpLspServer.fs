@@ -393,11 +393,10 @@ type AdaptiveFSharpLspServer
             let res =
               Commands.analyzerHandler (
                 file,
-                volatileFile.Source.ToString().Split("\n"),
-                parseAndCheck.GetParseResults.ParseTree,
+                volatileFile.Source,
+                parseAndCheck,
                 tast,
-                parseAndCheck.GetCheckResults.PartialAssemblySignature.Entities |> Seq.toList,
-                parseAndCheck.GetAllEntities
+                Array.empty
               )
 
             let! ct = Async.CancellationToken
