@@ -57,13 +57,13 @@ type AdaptiveState =
   member OpenDocument: filePath: string<LocalPath> * text: string * version: int -> CancellableTask<unit>
   member ChangeDocument: filePath: string<LocalPath> * p: DidChangeTextDocumentParams -> CancellableTask<unit>
   member SaveDocument: filePath: string<LocalPath> * text: string option -> CancellableTask<unit>
-  member ForgetDocument: filePath: DocumentUri -> Async<unit>
+  member ForgetDocument: filePath: DocumentUri -> CancellableTask<unit>
   member ParseAllFiles: unit -> Async<FSharpParseFileResults option array>
   member GetOpenFile: filePath: string<LocalPath> -> VolatileFile option
   member GetOpenFileSource: filePath: string<LocalPath> -> Async<Result<IFSACSourceText, string>>
   member GetOpenFileOrRead: filePath: string<LocalPath> -> Async<Result<VolatileFile, string>>
-  member GetParseResults: filePath: string<LocalPath> -> Async<Result<FSharpParseFileResults, string>>
-  member GetOpenFileTypeCheckResults: file: string<LocalPath> -> Async<Result<ParseAndCheckResults, string>>
+  member GetParseResults: filePath: string<LocalPath> -> CancellableTask<Result<FSharpParseFileResults, string>>
+  member GetOpenFileTypeCheckResults: file: string<LocalPath> -> CancellableTask<Result<ParseAndCheckResults, string>>
   member GetOpenFileTypeCheckResultsCached: filePath: string<LocalPath> -> Async<Result<ParseAndCheckResults, string>>
   member GetProjectOptionsForFile: filePath: string<LocalPath> -> Async<Result<FSharpProjectOptions, string>>
 
@@ -71,7 +71,7 @@ type AdaptiveState =
     filePath: string<LocalPath> * opts: FSharpProjectOptions -> Async<Result<ParseAndCheckResults, string>>
 
   member GetTypeCheckResultsForFile: filePath: string<LocalPath> -> Async<Result<ParseAndCheckResults, string>>
-  member GetFilesToProject: unit -> Async<(string<LocalPath> * LoadedProject) array>
+  member GetFilesToProject: unit -> CancellableTask<(string<LocalPath> * LoadedProject) array>
 
   member GetUsesOfSymbol:
     filePath: string<LocalPath> *
@@ -116,6 +116,6 @@ type AdaptiveState =
     symbolUse: FSharpSymbolUse * text: IFSACSourceText -> Async<Option<SymbolLocation.SymbolDeclarationLocation>>
 
   member GetDeclarations: filename: string<LocalPath> -> Async<NavigationTopLevelDeclaration array option>
-  member GetAllDeclarations: unit -> Async<(string<LocalPath> * NavigationTopLevelDeclaration array) array>
+  member GetAllDeclarations: unit -> CancellableTask<(string<LocalPath> * NavigationTopLevelDeclaration array) array>
   member GlyphToSymbolKind: (FSharpGlyph -> SymbolKind option)
   interface IDisposable

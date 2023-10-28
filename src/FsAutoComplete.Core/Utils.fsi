@@ -116,6 +116,18 @@ module Async =
     /// Async implementation of Array.map.
     val map: mapping: ('T -> Async<'U>) -> array: 'T[] -> Async<'U array>
 
+
+[<RequireQualifiedAccess>]
+module CancellableTask  =
+  open IcedTasks
+  val parallel75: computations: seq<CancellableTask<'a>> -> CancellableTask<'a array>
+
+
+  [<RequiresExplicitTypeArguments>]
+  val ignore:
+    c: CancellableTask<'a>
+      -> CancellableTask
+
 [<RequireQualifiedAccess>]
 module AsyncResult =
   val inline bimap: okF: ('a -> 'b) -> errF: ('c -> 'b) -> r: Async<Result<'a, 'c>> -> Async<'b>

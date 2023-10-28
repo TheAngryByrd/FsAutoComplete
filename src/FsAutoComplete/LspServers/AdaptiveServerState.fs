@@ -276,21 +276,21 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
     let inline getSourceLine lineNo = (source: ISourceText).GetLineString(lineNo - 1)
 
     let checkUnusedOpens =
-      async {
+      cancellableTask {
         try
           use progress = new ServerProgressReport(lspClient)
           do! progress.Begin($"Checking unused opens {fileName}...", message = filePathUntag)
 
           let! unused = UnusedOpens.getUnusedOpens (tyRes.GetCheckResults, getSourceLine)
 
-          let! ct = Async.CancellationToken
+          let! ct = CancellableTask.getCancellationToken ()
           notifications.Trigger(NotificationEvent.UnusedOpens(filePath, (unused |> List.toArray), file.Version), ct)
         with e ->
           logger.error (Log.setMessage "checkUnusedOpens failed" >> Log.addExn e)
       }
 
     let checkUnusedDeclarations =
-      async {
+      cancellableTask {
         try
           use progress = new ServerProgressReport(lspClient)
           do! progress.Begin($"Checking unused declarations {fileName}...", message = filePathUntag)
@@ -299,21 +299,21 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
           let! unused = UnusedDeclarations.getUnusedDeclarations (tyRes.GetCheckResults, isScript)
           let unused = unused |> Seq.toArray
 
-          let! ct = Async.CancellationToken
+          let! ct = CancellableTask.getCancellationToken ()
           notifications.Trigger(NotificationEvent.UnusedDeclarations(filePath, unused, file.Version), ct)
         with e ->
           logger.error (Log.setMessage "checkUnusedDeclarations failed" >> Log.addExn e)
       }
 
     let checkSimplifiedNames =
-      async {
+      cancellableTask {
         try
           use progress = new ServerProgressReport(lspClient)
           do! progress.Begin($"Checking simplifying of names {fileName}...", message = filePathUntag)
 
           let! simplified = SimplifyNames.getSimplifiableNames (tyRes.GetCheckResults, getSourceLine)
           let simplified = Array.ofSeq simplified
-          let! ct = Async.CancellationToken
+          let! ct = CancellableTask.getCancellationToken ()
           notifications.Trigger(NotificationEvent.SimplifyNames(filePath, simplified, file.Version), ct)
         with e ->
           logger.error (Log.setMessage "checkSimplifiedNames failed" >> Log.addExn e)
@@ -339,8 +339,8 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
         then
           checkSimplifiedNames ]
 
-    async {
-      do! analyzers |> Async.parallel75 |> Async.Ignore<unit[]>
+    cancellableTask {
+      do! analyzers |> CancellableTask.parallel75 |> CancellableTask.ignore<unit array>
 
       do!
         lspClient.NotifyDocumentAnalyzed
@@ -351,7 +351,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
 
   let runAnalyzers (config: FSharpConfig) (parseAndCheck: ParseAndCheckResults) (volatileFile: VolatileFile) =
-    async {
+    cancellableTask {
       if config.EnableAnalyzers then
         let file = volatileFile.FileName
 
@@ -367,7 +367,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
           match parseAndCheck.GetCheckResults.ImplementationFile with
           | Some tast ->
             // Since analyzers are not async, we need to switch to a new thread to not block threadpool
-            do! Async.SwitchToNewThread()
+            do! Task.Yield()
 
             let res =
               Commands.analyzerHandler (
@@ -379,7 +379,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
                 parseAndCheck.GetAllEntities
               )
 
-            let! ct = Async.CancellationToken
+            let! ct = CancellableTask.getCancellationToken()
             notifications.Trigger(NotificationEvent.AnalyzerMessage(res, file, volatileFile.Version), ct)
 
             Loggers.analyzers.info (Log.setMessageI $"end analysis of {file:file}")
@@ -398,13 +398,17 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
       if volatileFile.Source.Length = 0 then
         () // Don't analyze and error on an empty file
       else
-        async {
-          let config = config |> AVal.force
-          do! builtInCompilerAnalyzers config volatileFile parseAndCheck
-          do! runAnalyzers config parseAndCheck volatileFile
+        let c =
+          cancellableTask {
+            let config = config |> AVal.force
+            do! builtInCompilerAnalyzers config volatileFile parseAndCheck
+            do! runAnalyzers config parseAndCheck volatileFile
 
-        }
-        |> Async.StartWithCT ct)
+          }
+        c ct
+        |> ignore<Task<unit>>
+
+        )
 
 
   let handleCommandEvents (n: NotificationEvent, ct: CancellationToken) =
@@ -621,11 +625,11 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
     |> AVal.map (fun writeTime -> filePath, writeTime)
 
   let readFileFromDisk lastTouched (file: string<LocalPath>) =
-    async {
+    cancellableTask {
       if File.Exists(UMX.untag file) then
         use s = File.openFileStreamForReadingAsync file
 
-        let! source = sourceTextFactory.Create(file, s) |> Async.AwaitCancellableValueTask
+        let! source = sourceTextFactory.Create(file, s)
 
         return
           { LastTouched = lastTouched
@@ -1036,7 +1040,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
           let lastTouched = File.getLastWriteTimeOrDefaultNow file
 
-          return! readFileFromDisk lastTouched file
+          return! readFileFromDisk lastTouched file |> Async.AwaitCancellableTask
 
         with e ->
           logger.warn (
@@ -1070,10 +1074,10 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
   /// <param name="options">The options for the project or script.</param>
   /// <returns></returns>
   let parseFile (checker: FSharpCompilerServiceChecker) (source: VolatileFile) parseOpts options =
-    async {
+    cancellableTask {
       let! result = checker.ParseFile(source.FileName, source.Source, parseOpts)
 
-      let! ct = Async.CancellationToken
+      let! ct = CancellableTask.getCancellationToken()
       fileParsed.Trigger(result, options, ct)
       return result
     }
@@ -1097,7 +1101,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
           asyncResult {
             let! file = forceFindOpenFileOrRead fileName
-            return! parseFile checker file parseOpts opts.FSharpProjectOptions
+            return! parseFile checker file parseOpts opts.FSharpProjectOptions |> Async.AwaitCancellableTask
           }
           |> Async.map Result.toOption)
         |> Async.parallel75
@@ -1171,7 +1175,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
             let options = project.FSharpProjectOptions
             let parseOpts = Utils.projectOptionsToParseOptions project.FSharpProjectOptions
             let! file = file
-            return! parseFile checker file parseOpts options
+            return! parseFile checker file parseOpts options |> Async.AwaitCancellableTask
           }
 
       })
@@ -1182,14 +1186,14 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
     |> AMap.force
     |> HashMap.toArray
     |> Array.map (fun (sourceTextPath, projects) ->
-      async {
+      cancellableTask {
         let! projs = AsyncAVal.forceAsync projects
         return sourceTextPath, projs
       })
-    |> Async.parallel75
+    |> CancellableTask.parallel75
 
   let getAllFilesToProjectOptionsSelected () =
-    async {
+    cancellableTask {
       let! set = getAllFilesToProjectOptions ()
 
       return
@@ -1198,7 +1202,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
     }
 
   let getAllProjectOptions () =
-    async {
+    cancellableTask {
       let! set =
         allFilesToFSharpProjectOptions
         |> AMap.toASetValues
@@ -1213,7 +1217,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
   let getAllFSharpProjectOptions () =
     getAllProjectOptions ()
-    |> Async.map (Array.map (fun x -> x.FSharpProjectOptions))
+    |> CancellableTask.map (Array.map (fun x -> x.FSharpProjectOptions))
 
   let getProjectOptionsForFile (filePath: string<LocalPath>) =
     asyncAVal {
@@ -1248,7 +1252,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
   /// <param name="shouldCache">Determines if the typecheck should be cached for autocompletions.</param>
   /// <returns></returns>
   let parseAndCheckFile (checker: FSharpCompilerServiceChecker) (file: VolatileFile) options shouldCache =
-    async {
+    cancellableTask {
       let tags =
         [ SemanticConventions.fsac_sourceCodePath, box (UMX.untag file.Source.FileName)
           SemanticConventions.projectFilePath, box (options.ProjectFileName) ]
@@ -1263,7 +1267,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
         >> Log.addContextDestructured "date" (file.LastTouched)
       )
 
-      let! ct = Async.CancellationToken
+      let! ct = CancellableTask.getCancellationToken ()
 
       use progressReport = new ServerProgressReport(lspClient)
 
@@ -1280,7 +1284,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
         )
         |> Debug.measureAsync $"checker.ParseAndCheckFileInProject - {file.Source.FileName}"
 
-      do! progressReport.End($"Typechecked {file.Source.FileName}")
+      // do! progressReport.End($"Typechecked {file.Source.FileName}")
 
       notifications.Trigger(NotificationEvent.FileParsed(file.Source.FileName), ct)
 
@@ -1299,23 +1303,23 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
           >> Log.addContextDestructured "file" file.Source.FileName
         )
 
-        Async.Start(
-          async {
 
-            fileParsed.Trigger(parseAndCheck.GetParseResults, options, ct)
-            fileChecked.Trigger(parseAndCheck, file, ct)
-            let checkErrors = parseAndCheck.GetParseResults.Diagnostics
-            let parseErrors = parseAndCheck.GetCheckResults.Diagnostics
+        cancellableTask {
 
-            let errors =
-              Array.append checkErrors parseErrors
-              |> Array.distinctBy (fun e ->
-                e.Severity, e.ErrorNumber, e.StartLine, e.StartColumn, e.EndLine, e.EndColumn, e.Message)
+          fileParsed.Trigger(parseAndCheck.GetParseResults, options, ct)
+          fileChecked.Trigger(parseAndCheck, file, ct)
+          let checkErrors = parseAndCheck.GetParseResults.Diagnostics
+          let parseErrors = parseAndCheck.GetCheckResults.Diagnostics
 
-            notifications.Trigger(NotificationEvent.ParseError(errors, file.Source.FileName, file.Version), ct)
-          },
-          ct
-        )
+          let errors =
+            Array.append checkErrors parseErrors
+            |> Array.distinctBy (fun e ->
+              e.Severity, e.ErrorNumber, e.StartLine, e.StartColumn, e.EndLine, e.EndColumn, e.Message)
+
+          notifications.Trigger(NotificationEvent.ParseError(errors, file.Source.FileName, file.Version), ct)
+        }
+        |> fun c -> c ct |> ignore<Task<unit>>
+
 
 
         return parseAndCheck
@@ -1334,7 +1338,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
         let! fileInfo = forceFindOpenFileOrRead filePath
         // Don't cache for autocompletions as we really only want to cache "Opened" files.
-        return! parseAndCheckFile checker fileInfo opts false
+        return! parseAndCheckFile checker fileInfo opts false |> Async.AwaitCancellableTask
 
       with e ->
 
@@ -1371,13 +1375,14 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
         return!
           asyncOption {
+
             let! opts = selectProject projectOptions
             let! cts = tryGetOpenFileToken file
-            use linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ctok, cts.Token)
+            let! currentToken = Async.CancellationToken
+            use linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ctok, cts.Token, currentToken)
 
             return!
-              parseAndCheckFile checker info opts.FSharpProjectOptions true
-              |> Async.withCancellation linkedCts.Token
+              parseAndCheckFile checker info opts.FSharpProjectOptions true linkedCts.Token
           }
 
       })
@@ -1390,19 +1395,19 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
     openFilesToRecentCheckedFilesResults |> AMapAsync.tryFindAndFlatten (filePath)
 
   let forceGetParseResults filePath =
-    async {
+    cancellableTask {
       let! results = getParseResults filePath |> AsyncAVal.forceAsync
       return results |> Result.ofOption (fun () -> $"No parse results for {filePath}")
     }
 
   let forceGetOpenFileRecentTypeCheckResults filePath =
-    async {
+    cancellableTask {
       let! results = getOpenFileRecentTypeCheckResults filePath |> AsyncAVal.forceAsync
       return results |> Result.ofOption (fun () -> $"No typecheck results for {filePath}")
     }
 
   let forceGetOpenFileTypeCheckResults (filePath: string<LocalPath>) =
-    async {
+    cancellableTask {
       let! results = getOpenFileTypeCheckResults (filePath) |> AsyncAVal.forceAsync
       return results |> Result.ofOption (fun () -> $"No typecheck results for {filePath}")
     }
@@ -1429,8 +1434,8 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
       return
         tryGetLastCheckResultForFile filePath
-        |> AsyncResult.orElseWith (fun _ -> forceGetOpenFileRecentTypeCheckResults filePath)
-        |> AsyncResult.orElseWith (fun _ -> forceGetOpenFileTypeCheckResults filePath)
+        |> AsyncResult.orElseWith (fun _ -> forceGetOpenFileRecentTypeCheckResults filePath |> Async.AwaitCancellableTask)
+        |> AsyncResult.orElseWith (fun _ -> forceGetOpenFileTypeCheckResults filePath |> Async.AwaitCancellableTask)
         |> Async.map (fun r ->
           Async.Start(
             async {
@@ -1438,7 +1443,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
               try
                 do!
                   forceGetOpenFileTypeCheckResults filePath
-                  |> Async.Ignore<Result<ParseAndCheckResults, string>>
+                  |> CancellableTask.ignore<Result<ParseAndCheckResults, string>>
               with e ->
                 ()
             }
@@ -1453,17 +1458,17 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
     |> AMap.map (fun k v -> v |> AsyncAVal.mapOption (fun p _ -> p.GetNavigationItems().Declarations))
 
   let getAllDeclarations () =
-    async {
+    cancellableTask {
       let! results =
         allFilesToDeclarations
         |> AMap.force
         |> HashMap.toArray
         |> Array.map (fun (k, v) ->
-          async {
+          cancellableTask {
             let! decls = AsyncAVal.forceAsync v
             return Option.map (fun v -> k, v) decls
           })
-        |> Async.parallel75
+        |> CancellableTask.parallel75
 
       return results |> Array.Parallel.choose id
 
@@ -1518,14 +1523,14 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
             if symbol.Kind = kind then
               let! (text) = forceFindOpenFileOrRead fileName |> Async.map Option.ofResult
               let! line = tryGetLineStr pos text.Source |> Option.ofResult
-              let! tyRes = forceGetOpenFileTypeCheckResults fileName |> Async.map (Option.ofResult)
+              let! tyRes = forceGetOpenFileTypeCheckResults fileName |> Async.AwaitCancellableTask |> Async.map (Option.ofResult)
               let symbolUse = tyRes.TryGetSymbolUse pos line
               return! Some(symbol, symbolUse)
             else
               return! None
           }
 
-        member x.ParseFileInProject(file) = forceGetParseResults file |> Async.map (Option.ofResult) }
+        member x.ParseFileInProject(file) = forceGetParseResults file |> Async.AwaitCancellableTask |> Async.map (Option.ofResult) }
 
   let getDependentProjectsOfProjects ps =
     let projectSnapshot = forceLoadProjects ()
@@ -1619,7 +1624,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
       findReferencesForSymbolInFile
       forceFindSourceText
       tryGetProjectOptionsForFsproj
-      (getAllFSharpProjectOptions >> Async.map Array.toSeq)
+      (getAllFSharpProjectOptions >> Async.AwaitCancellableTask >> Async.map Array.toSeq)
       includeDeclarations
       includeBackticks
       errorOnFailureToFixRange
@@ -1635,7 +1640,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
       asyncResult {
         let! (file) = forceFindOpenFileOrRead filePath
         let! lineStr = file.Source |> tryGetLineStr pos
-        and! tyRes = forceGetOpenFileTypeCheckResults filePath
+        and! tyRes = forceGetOpenFileTypeCheckResults filePath |> Async.AwaitCancellableTask
         return tyRes, lineStr, file.Source
       }
 
@@ -1772,7 +1777,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
          AdjustConstant.fix tryGetParseResultsForFile |])
 
   let forgetDocument (uri: DocumentUri) =
-    async {
+    cancellableTask {
       let filePath = uri |> Path.FileUriToLocalPath |> Utils.normalizePath
 
       let doesNotExist (file: string<LocalPath>) = not (File.Exists(UMX.untag file))
@@ -1971,7 +1976,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
         do!
           forceGetOpenFileTypeCheckResults filePath
-          |> Async.Ignore<Result<ParseAndCheckResults, string>>
+          |> CancellableTask.ignore<Result<ParseAndCheckResults, string>>
 
       return ()
     }
@@ -1982,7 +1987,7 @@ type AdaptiveState(lspClient: FSharpLspClient, sourceTextFactory: ISourceTextFac
 
       do!
         forceGetOpenFileTypeCheckResults filePath
-        |> Async.Ignore<Result<ParseAndCheckResults, string>>
+        |> CancellableTask.ignore<Result<ParseAndCheckResults, string>>
     }
 
   member x.SaveDocument(filePath: string<LocalPath>, text: string option) =

@@ -259,6 +259,17 @@ module Async =
       }
 
 [<RequireQualifiedAccess>]
+module CancellableTask =
+  open IcedTasks
+  let parallel75 computations =
+    let maxConcurrency = Math.Max(1.0, Math.Floor((float System.Environment.ProcessorCount) * 0.75))
+    CancellableTask.whenAllThrottled (int maxConcurrency) computations
+
+  [<RequiresExplicitTypeArguments>]
+  let ignore<'a> (c: CancellableTask<'a>) = c |> CancellableTask.toUnit
+
+
+[<RequireQualifiedAccess>]
 module AsyncResult =
   let inline bimap okF errF r = Async.map (Result.bimap okF errF) r
   let inline ofOption recover o = Async.map (Result.ofOption recover) o
