@@ -36,6 +36,13 @@
         "telplin"
       ],
       "rollForward": false
+    },
+    "easybuild.commitlinter": {
+      "version": "1.0.0",
+      "commands": [
+        "commit-linter"
+      ],
+      "rollForward": false
     }
   }
 }
