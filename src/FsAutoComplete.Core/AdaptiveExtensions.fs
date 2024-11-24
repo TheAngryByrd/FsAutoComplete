@@ -19,44 +19,39 @@ module AdaptiveExtensions =
 
     member cts.TryCancel() =
       try
-        if not <| isNull cts then
-          cts.Cancel()
+        if not <| isNull cts then cts.Cancel()
       with
       | :? ObjectDisposedException
       | :? NullReferenceException -> ()
 
     member cts.TryDispose() =
       try
-        if not <| isNull cts then
-          cts.Dispose()
-      with _ ->
-        ()
+        if not <| isNull cts then cts.Dispose()
+      with
+      | _ -> ()
 
 
   type TaskCompletionSource<'a> with
 
     /// https://github.com/dotnet/runtime/issues/47998
-    member tcs.TrySetFromTaskBetter(real: Task<'a>) =
+    member tcs.TrySetFromTaskFinished(real: Task<'a>) =
 
       // note: using ContinueWith instead of task CE for better stack traces
-      real.ContinueWith(fun (task: Task<_>) ->
-        #if NET9_0_OR_GREATER
-          tcs.TrySetFromTask task |> ignore<bool>
-        #else
+      real.ContinueWith (fun (task: Task<_>) ->
+#if NET9_0_OR_GREATER
+        tcs.TrySetFromTask(task) |> ignore<bool>
+#else
         match task.Status with
         | TaskStatus.RanToCompletion -> tcs.TrySetResult task.Result |> ignore<bool>
         | TaskStatus.Canceled ->
           tcs.TrySetException(TaskCanceledException(task))
           |> ignore<bool>
         | TaskStatus.Faulted ->
-          let exns = task.Exception.InnerExceptions
-          if Seq.length exns = 1 then
-            tcs.TrySetException(exns.[0]) |> ignore<bool>
-          else
-            tcs.TrySetException(exns) |>  ignore<bool>
-
+          tcs.TrySetException(task.Exception.InnerExceptions)
+          |> ignore<bool>
         | _ -> ()
-        #endif
+
+#endif
         )
       |> ignore<Task>
 
@@ -93,13 +88,16 @@ module AdaptiveExtensions =
 
 
 module Utils =
-  let cheapEqual (a: 'T) (b: 'T) = ShallowEqualityComparer<'T>.Instance.Equals(a, b)
+  let cheapEqual (a: 'T) (b: 'T) = ShallowEqualityComparer<'T>.Instance.Equals (a, b)
 
 /// <summary>
 /// Maps and calls dispose before mapping of new values. Useful for cleaning up callbacks like AddMarkingCallback for tracing purposes.
 /// </summary>
 type MapDisposableTupleVal<'T1, 'T2, 'Disposable when 'Disposable :> IDisposable>
-  (mapping: 'T1 -> ('T2 * 'Disposable), input: aval<'T1>) =
+  (
+    mapping: 'T1 -> ('T2 * 'Disposable),
+    input: aval<'T1>
+  ) =
   inherit AVal.AbstractVal<'T2>()
 
   let mutable cache: ValueOption<struct ('T1 * 'T2 * 'Disposable)> = ValueNone
@@ -108,8 +106,8 @@ type MapDisposableTupleVal<'T1, 'T2, 'Disposable when 'Disposable :> IDisposable
     let i = input.GetValue token
 
     match cache with
-    | ValueSome(struct (a, b, _)) when Utils.cheapEqual a i -> b
-    | ValueSome(struct (_, _, c)) ->
+    | ValueSome (struct (a, b, _)) when Utils.cheapEqual a i -> b
+    | ValueSome (struct (_, _, c)) ->
       (c :> IDisposable).Dispose()
       let (b, c) = mapping i
       cache <- ValueSome(struct (i, b, c))
@@ -202,12 +200,13 @@ module AVal =
 
           for op in HashSet.computeDelta lastDeps newDeps do
             match op with
-            | Add(_, d) ->
+            | Add (_, d) ->
               // the new dependency needs to be evaluated with our token, s.t. we depend on it in the future
               d.GetValueUntyped token |> ignore
-            | Rem(_, d) ->
+            | Rem (_, d) ->
               // we no longer need to depend on the old dependency so we can remove ourselves from its outputs
-              lock d.Outputs (fun () -> d.Outputs.Remove x) |> ignore
+              lock d.Outputs (fun () -> d.Outputs.Remove x)
+              |> ignore
 
           lastDeps <- newDeps
 
@@ -235,7 +234,10 @@ module AVal =
 module ASet =
   /// Creates an amap with the keys from the set and the values given by mapping and
   /// adaptively applies the given mapping function to all elements and returns a new amap containing the results.
-  let mapAtoAMap mapper src = src |> ASet.mapToAMap mapper |> AMap.mapA (fun _ v -> v)
+  let mapAtoAMap mapper src =
+    src
+    |> ASet.mapToAMap mapper
+    |> AMap.mapA (fun _ v -> v)
 
 module AMap =
   open FSharp.Data.Traceable
@@ -328,12 +330,11 @@ module AMap =
 
           cache <-
             match HashMap.tryRemove i cache with
-            | Some(o, remainingCache) ->
+            | Some (o, remainingCache) ->
               let rem, rest = MultiSetMap.remove o i targets
               targets <- rest
 
-              if rem then
-                o.Outputs.Remove x |> ignore
+              if rem then o.Outputs.Remove x |> ignore
 
               remainingCache
             | None -> cache
@@ -392,7 +393,8 @@ module AMap =
     (mapper: 'Key -> 'InValue -> aval<'OutValue>)
     (map: #amap<'Key, #aval<'InValue>>)
     : amap<'Key, aval<'OutValue>> =
-    map |> AMap.map (fun k v -> AVal.bind (mapper k) v)
+    map
+    |> AMap.map (fun k v -> AVal.bind (mapper k) v)
 
 
   /// Adaptively applies the given mapping to all changes and reapplies mapping on dirty outputs
@@ -413,7 +415,9 @@ module AMap =
     =
     let mapping =
       mapping
-      >> HashMap.map (fun _ v -> AVal.constant v |> AVal.mapWithAdditionalDependencies id)
+      >> HashMap.map (fun _ v ->
+        AVal.constant v
+        |> AVal.mapWithAdditionalDependencies id)
 
     batchRecalcDirty mapping map
 
@@ -473,7 +477,9 @@ and AdaptiveCancellableTask<'a>(cancel: unit -> unit, real: Task<'a>) =
         real
       else
         cachedTcs <- new TaskCompletionSource<'a>(TaskCreationOptions.RunContinuationsAsynchronously)
-        cachedTcs.TrySetFromTaskBetter real |> ignore
+
+        cachedTcs.TrySetFromTaskFinished real
+
         cachedTcs.Task
 
     cached <-
@@ -495,7 +501,8 @@ and AdaptiveCancellableTask<'a>(cancel: unit -> unit, real: Task<'a>) =
       cancel ()
 
       if not <| isNull cachedTcs then
-        cachedTcs.TrySetCanceled(cancellationToken) |> ignore<bool>)
+        cachedTcs.TrySetCanceled(cancellationToken)
+        |> ignore<bool>)
 
   /// <summary>The output of the passed in task to the constructor.</summary>
   /// <returns></returns>
@@ -716,7 +723,7 @@ module AsyncAVal =
         member x.Compute t =
           if x.OutOfDate || Option.isNone cache then
             let ref =
-              RefCountingTaskCreator(fun ct ->
+              RefCountingTaskCreator (fun ct ->
                 task {
                   let v = input.GetValue t
 
@@ -725,7 +732,7 @@ module AsyncAVal =
                   let! i = v.Task
 
                   match dataCache with
-                  | ValueSome(struct (oa, ob)) when Utils.cheapEqual oa i -> return ob
+                  | ValueSome (struct (oa, ob)) when Utils.cheapEqual oa i -> return ob
                   | _ ->
                     let! b = mapping i ct
                     dataCache <- ValueSome(struct (i, b))
@@ -765,13 +772,13 @@ module AsyncAVal =
         member x.Compute t =
           if x.OutOfDate || Option.isNone cache then
             let ref =
-              RefCountingTaskCreator(fun ct ->
+              RefCountingTaskCreator (fun ct ->
                 task {
                   let ta = ca.GetValue t
                   let tb = cb.GetValue t
 
                   use _s =
-                    ct.Register(fun () ->
+                    ct.Register (fun () ->
                       ta.Cancel(ct)
                       tb.Cancel(ct))
 
@@ -779,7 +786,7 @@ module AsyncAVal =
                   let! ib = tb.Task
 
                   match dataCache with
-                  | ValueSome(struct (va, vb, vc)) when Utils.cheapEqual va ia && Utils.cheapEqual vb ib -> return vc
+                  | ValueSome (struct (va, vb, vc)) when Utils.cheapEqual va ia && Utils.cheapEqual vb ib -> return vc
                   | _ ->
                     let! vc = mapping ia ib ct
                     dataCache <- ValueSome(struct (ia, ib, vc))
@@ -816,9 +823,10 @@ module AsyncAVal =
 
         member x.Compute t =
           if x.OutOfDate then
-            if Interlocked.Exchange(&inputChanged, 0) = 1 || Option.isNone cache then
+            if Interlocked.Exchange(&inputChanged, 0) = 1
+               || Option.isNone cache then
               let outerTask =
-                RefCountingTaskCreator(fun ct ->
+                RefCountingTaskCreator (fun ct ->
                   task {
                     let v = value.GetValue t
                     use _s = ct.Register(fun () -> v.Cancel(ct))
@@ -826,7 +834,7 @@ module AsyncAVal =
                     let! i = v.Task
 
                     match outerDataCache with
-                    | Some(struct (oa, ob)) when Utils.cheapEqual oa i -> return ob
+                    | Some (struct (oa, ob)) when Utils.cheapEqual oa i -> return ob
                     | _ ->
                       let inner = mapping i ct
                       outerDataCache <- Some(i, inner)
@@ -839,7 +847,7 @@ module AsyncAVal =
             let outerTask = cache.Value
 
             let ref =
-              RefCountingTaskCreator(fun ct ->
+              RefCountingTaskCreator (fun ct ->
                 task {
 
                   let inner = outerTask.New()
@@ -852,7 +860,7 @@ module AsyncAVal =
                   let innerTask = inner.GetValue t
 
                   use _s2 =
-                    ct.Register(fun () ->
+                    ct.Register (fun () ->
                       innerTask.Cancel(ct)
                       lock inners (fun () -> inners.Value <- HashSet.remove inner inners.Value)
                       inner.Outputs.Remove x |> ignore)
@@ -865,10 +873,10 @@ module AsyncAVal =
 
             ref.New()
           else
-            innerCache.Value.New()
+            innerCache.Value.New() }
+    :>
 
-    }
-    :> asyncaval<_>
+    asyncaval<_>
 
 
   /// Returns a new async adaptive value that adaptively applies the mapping function to the given
@@ -946,7 +954,8 @@ module AMapAsync =
     (mapper: 'Key -> 'InValue -> CancellationToken -> asyncaval<'OutValue>)
     (map: #amap<'Key, #aval<'InValue>>)
     : amap<'Key, asyncaval<'OutValue>> =
-    map |> AMap.map (fun k v -> v |> AsyncAVal.ofAVal |> AsyncAVal.bind (mapper k))
+    map
+    |> AMap.map (fun k v -> v |> AsyncAVal.ofAVal |> AsyncAVal.bind (mapper k))
 
   /// <summary>
   /// Adaptively maps over the given map.
@@ -955,7 +964,8 @@ module AMapAsync =
     (mapper: 'Key -> 'InValue -> CancellationToken -> asyncaval<'OutValue>)
     (map: #amap<'Key, #asyncaval<'InValue>>)
     : amap<'Key, asyncaval<'OutValue>> =
-    map |> AMap.map (fun k v -> v |> AsyncAVal.bind (mapper k))
+    map
+    |> AMap.map (fun k v -> v |> AsyncAVal.bind (mapper k))
 
   /// Adaptively looks up the given key in the map and binds the value to be easily worked with. Note that this operation should not be used extensively since its resulting aval will be re-evaluated upon every change of the map.
   let tryFindA (key: 'Key) (map: amap<'Key, #asyncaval<'Value>>) =
