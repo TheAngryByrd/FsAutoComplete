@@ -538,6 +538,8 @@ type FSharpCompilerServiceChecker(hasAnalyzers, typecheckCacheSize, parallelRefe
               MemoryCacheEntryOptions()
                 .SetSize(1)
                 .SetSlidingExpiration(TimeSpan.FromMinutes(5.))
+            let rw = WeakReference<ParseAndCheckResults>(r)
+            lastCheckResults.Set(filePath, rw, ops) |> ignore
 
             return lastCheckResults.Set(filePath, r, ops)
           else
@@ -564,8 +566,11 @@ type FSharpCompilerServiceChecker(hasAnalyzers, typecheckCacheSize, parallelRefe
 
     checkerLogger.info (Log.setMessage "{opName}" >> Log.addContextDestructured "opName" opName)
 
-    match lastCheckResults.TryGetValue<ParseAndCheckResults>(file) with
-    | (true, v) -> Some v
+    match lastCheckResults.TryGetValue<WeakReference<ParseAndCheckResults>>(file) with
+    | (true, v) ->
+      match v.TryGetTarget() with
+      | (true, v) -> Some v
+      | _ -> None
     | _ -> None
 
   member _.TryGetRecentCheckResultsForFile(file: string<LocalPath>, snapshot: FSharpProjectSnapshot) =
