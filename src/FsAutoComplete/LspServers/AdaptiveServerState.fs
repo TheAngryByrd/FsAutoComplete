@@ -326,10 +326,8 @@ type AdaptiveState
         FSIRefs.TFM.NetFx)
 
 
-  let sendDiagnostics (uri: DocumentUri) (version, diags: Diagnostic[]) =
+  let sendDiagnostics (uri: DocumentUri) (version : Version option, diags: Diagnostic[]) =
     logger.info (Log.setMessageI $"SendDiag for {uri:file}: {diags.Length:diags} entries")
-
-    // TODO: providing version would be very useful
     { Uri = uri
       Diagnostics = diags
       Version = version }
@@ -377,13 +375,6 @@ type AdaptiveState
     disposables.Add
     <| fileParsed.Publish.Subscribe(fun (parseResults, proj, ct) -> detectTests parseResults proj ct)
 
-  let analyzersLocker = new SemaphoreSlim(1,1)
-
-  let typecheckLocker =
-    let maxConcurrency =
-      Math.Max(1.0, Math.Floor((float System.Environment.ProcessorCount) * 0.75)) |> int
-    new SemaphoreSlim(maxConcurrency,maxConcurrency)
-
   let builtInCompilerAnalyzers config (file: VolatileFile) (tyRes: ParseAndCheckResults) =
     let filePath = file.FileName
     let filePathUntag = UMX.untag filePath
@@ -394,12 +385,9 @@ type AdaptiveState
 
     let inline getSourceLine lineNo = (source: ISourceText).GetLineString(lineNo - 1)
 
-
     let checkUnusedOpens =
       asyncEx {
         try
-          let! ct = Async.CancellationToken
-          use! _l = analyzersLocker.LockAsync()
           use progress = progressLookup.CreateProgressReport(lspClient, cancellable = true)
           do! progress.Begin($"Checking unused opens {fileName}...", message = filePathUntag)
 
@@ -407,6 +395,7 @@ type AdaptiveState
             UnusedOpens.getUnusedOpens (tyRes.GetCheckResults, getSourceLine)
             |> Async.withCancellation progress.CancellationToken
 
+          let! ct = Async.CancellationToken
           notifications.Trigger(NotificationEvent.UnusedOpens(filePath, (unused |> List.toArray), file.Version), ct)
         with e ->
           logger.error (Log.setMessage "checkUnusedOpens failed" >> Log.addExn e)
@@ -415,8 +404,6 @@ type AdaptiveState
     let checkUnusedDeclarations =
       asyncEx {
         try
-          let! ct = Async.CancellationToken
-          use! _l = analyzersLocker.LockAsync()
           use progress = progressLookup.CreateProgressReport(lspClient, cancellable = true)
           do! progress.Begin($"Checking unused declarations {fileName}...", message = filePathUntag)
 
@@ -428,6 +415,7 @@ type AdaptiveState
 
           let unused = unused |> Seq.toArray
 
+          let! ct = Async.CancellationToken
           notifications.Trigger(NotificationEvent.UnusedDeclarations(filePath, unused, file.Version), ct)
         with e ->
           logger.error (Log.setMessage "checkUnusedDeclarations failed" >> Log.addExn e)
@@ -436,8 +424,6 @@ type AdaptiveState
     let checkSimplifiedNames =
       asyncEx {
         try
-          let! ct = Async.CancellationToken
-          use! _l = analyzersLocker.LockAsync()
           use progress = progressLookup.CreateProgressReport(lspClient, cancellable = true)
           do! progress.Begin($"Checking simplifying of names {fileName}...", message = filePathUntag)
 
@@ -446,6 +432,7 @@ type AdaptiveState
             |> Async.withCancellation progress.CancellationToken
 
           let simplified = Array.ofSeq simplified
+          let! ct = Async.CancellationToken
           notifications.Trigger(NotificationEvent.SimplifyNames(filePath, simplified, file.Version), ct)
         with e ->
           logger.error (Log.setMessage "checkSimplifiedNames failed" >> Log.addExn e)
@@ -454,8 +441,6 @@ type AdaptiveState
     let checkUnnecessaryParentheses =
       asyncEx {
         try
-          let! ct = Async.CancellationToken
-          use! _l = analyzersLocker.LockAsync()
           use progress = progressLookup.CreateProgressReport(lspClient)
           do! progress.Begin($"Checking for unnecessary parentheses {fileName}...", message = filePathUntag)
 
@@ -477,6 +462,7 @@ type AdaptiveState
 
               | _ -> ranges)
 
+          let! ct = Async.CancellationToken
 
           notifications.Trigger(
             NotificationEvent.UnnecessaryParentheses(filePath, Array.ofSeq unnecessaryParentheses, file.Version),
@@ -525,9 +511,6 @@ type AdaptiveState
         let file = volatileFile.FileName
 
         try
-
-          let! ct = Async.CancellationToken
-          use! _l = analyzersLocker.LockAsync()
           use progress = new ServerProgressReport(lspClient)
           do! progress.Begin("Running analyzers...", message = UMX.untag file)
 
@@ -551,6 +534,7 @@ type AdaptiveState
                 parseAndCheck.GetCheckResults
               )
 
+            let! ct = Async.CancellationToken
             notifications.Trigger(NotificationEvent.AnalyzerMessage(res, file, volatileFile.Version), ct)
 
             Loggers.analyzers.info (Log.setMessageI $"end analysis of {file:file}")
@@ -922,7 +906,7 @@ type AdaptiveState
       use progressReport = new ServerProgressReport(lspClient)
 
       progressReport.Begin ($"Loading {projects.Count} Projects") (CancellationToken.None)
-      |> ignore<ValueTask<unit>>
+      |> ignore<Task<unit>>
 
       let projectOptions =
         loader.LoadProjects(projects |> Seq.map (fst >> UMX.untag) |> Seq.toList, [], binlogConfig)
@@ -1055,8 +1039,21 @@ type AdaptiveState
                 let fcsRangeToReplace = protocolRangeToRange (UMX.untag filePath) change.Range
 
                 try
-                  let text = text.Source.ModifyText(fcsRangeToReplace, change.Text)
-                  VolatileFile.Create(text, version, touched)
+                  match text.Source.ModifyText(fcsRangeToReplace, change.Text) with
+                  | Ok text -> VolatileFile.Create(text, version, touched)
+
+                  | Error message ->
+                    logger.error (
+                      Log.setMessage
+                        "Error applying {change} to document {file} for version {version} - {range} : {message} "
+                      >> Log.addContextDestructured "file" filePath
+                      >> Log.addContextDestructured "version" version
+                      >> Log.addContextDestructured "message" message
+                      >> Log.addContextDestructured "range" fcsRangeToReplace
+                      >> Log.addContextDestructured "change" change
+                    )
+
+                    text
                 with e ->
                   logger.error (
                     Log.setMessage "Error applying {change} to document {file} for version {version} - {range}"
@@ -1074,7 +1071,7 @@ type AdaptiveState
       })
 
   let projectOptions =
-    asyncAVal {
+    aval {
       let! wsp =
         adaptiveWorkspacePaths
         |> addAValLogging (fun () ->
@@ -1134,18 +1131,17 @@ type AdaptiveState
     |> AMap.ofList
 
   let loadedProjects =
-    asyncAVal {
+    amap {
       let! projectOptions = projectOptions
 
       if useTransparentCompiler then
-        return createSnapshots projectOptions
+        yield! createSnapshots projectOptions
       else
-        return createOptions projectOptions
+        yield! createOptions projectOptions
     }
 
   let getAllLoadedProjects =
-    asyncAVal {
-      let! loadedProjects = loadedProjects
+    aval {
 
       return!
         loadedProjects
@@ -1161,44 +1157,42 @@ type AdaptiveState
   /// This should not be used inside the adaptive evaluation of other AdaptiveObjects since it does not track dependencies.
   /// </summary>
   /// <returns>A list of FSharpProjectOptions</returns>
-  let forceLoadProjects () = getAllLoadedProjects |> AsyncAVal.forceAsync
+  let forceLoadProjects () = getAllLoadedProjects |> AVal.force
 
   do
     // Reload Projects with some debouncing if `loadedProjectOptions` is out of date.
     AVal.Observable.onOutOfDateWeak projectOptions
     |> Observable.throttleOn Concurrency.NewThreadScheduler.Default (TimeSpan.FromMilliseconds(200.))
     |> Observable.observeOn Concurrency.NewThreadScheduler.Default
-    |> Observable.subscribe (fun _ -> forceLoadProjects () |> Async.Ignore |> Async.Start)
+    |> Observable.subscribe (fun _ -> forceLoadProjects () |> ignore )
     |> disposables.Add
 
   let AMapReKeyMany f map = map |> AMap.toASet |> ASet.collect f |> AMap.ofASet
 
   let sourceFileToProjectOptions =
-    asyncAVal {
-      let! loadedProjects = loadedProjects
-
-      let sourceFileToProjectOptions =
-        loadedProjects
-        |> AMapReKeyMany(fun (_, v) -> v.SourceFilesTagged |> ASet.ofArray |> ASet.map (fun source -> source, v))
-        |> AMap.map' HashSet.toList
-
-      return sourceFileToProjectOptions
-
-    }
+    loadedProjects
+    |> AMapReKeyMany(fun (_, v) -> v.SourceFilesTagged |> ASet.ofArray |> ASet.map (fun source -> source, v))
+    |> AMap.map' HashSet.toList
 
   let cancelToken filePath version (cts: CancellationTokenSource) =
-    logger.info (
-      Log.setMessage "Cancelling {filePath} - {version}"
-      >> Log.addContextDestructured "filePath" filePath
-      >> Log.addContextDestructured "version" version
-    )
-    cts.TryCancel()
-    cts.TryDispose()
 
+    try
+      logger.info (
+        Log.setMessage "Cancelling {filePath} - {version}"
+        >> Log.addContextDestructured "filePath" filePath
+        >> Log.addContextDestructured "version" version
+      )
+
+      cts.Cancel()
+      cts.Dispose()
+    with
+    | :? OperationCanceledException
+    | :? ObjectDisposedException as e when e.Message.Contains("CancellationTokenSource has been disposed") ->
+      // ignore if already cancelled
+      ()
 
   let resetCancellationToken (filePath: string<LocalPath>) version =
-    let adder _ =
-      new CancellationTokenSource()
+    let adder _ = new CancellationTokenSource()
 
     let updater _key value =
       cancelToken filePath version value
@@ -1280,8 +1274,6 @@ type AdaptiveState
   /// <param name="file">The source to be parsed.</param>
   /// <param name="compilerOptions"></param>
   /// <returns></returns>
-
-
   let parseFile (checker: FSharpCompilerServiceChecker) (file: VolatileFile) (compilerOptions: CompilerProjectOption) =
     task {
       let! result =
@@ -1290,8 +1282,6 @@ type AdaptiveState
           taskResult { return! checker.ParseFile(file.FileName, snap) }
         | CompilerProjectOption.BackgroundCompiler opts ->
           taskResult {
-
-
             return! checker.ParseFile(file.FileName, file.Source, opts)
           }
 
@@ -1425,7 +1415,6 @@ type AdaptiveState
         }
       else
         asyncAVal {
-          let! sourceFileToProjectOptions = sourceFileToProjectOptions
 
           let! projs =
             sourceFileToProjectOptions
@@ -1437,10 +1426,8 @@ type AdaptiveState
         })
 
   let allFSharpFilesAndProjectOptions =
-    asyncAVal {
-      let wins = openFilesToChangesAndProjectOptions
 
-      let! sourceFileToProjectOptions = sourceFileToProjectOptions
+      let wins = openFilesToChangesAndProjectOptions
 
       let loses =
         sourceFileToProjectOptions
@@ -1452,23 +1439,15 @@ type AdaptiveState
             return vFile, Ok proj
           })
 
-      return AMap.union loses wins
-    }
+      AMap.union loses wins
 
   let allFilesToFSharpProjectOptions =
-    asyncAVal {
-      let! allFSharpFilesAndProjectOptions = allFSharpFilesAndProjectOptions
 
-      return
         allFSharpFilesAndProjectOptions
         |> AMapAsync.mapAsyncAVal (fun _filePath (options) _ctok -> AsyncAVal.constant options)
-    }
 
   let allFilesParsed =
-    asyncAVal {
-      let! allFSharpFilesAndProjectOptions = allFSharpFilesAndProjectOptions
 
-      return
         allFSharpFilesAndProjectOptions
         |> AMapAsync.mapAsyncAVal (fun filePath (file, options) _ctok ->
           asyncAVal {
@@ -1485,12 +1464,9 @@ type AdaptiveState
               return r
             | Error e -> return Error e
           })
-    }
 
   let getAllFilesToProjectOptions () =
     async {
-      let! allFilesToFSharpProjectOptions = allFilesToFSharpProjectOptions |> AsyncAVal.forceAsync
-
       return!
         allFilesToFSharpProjectOptions
         // |> AMap.toASetValues
@@ -1522,8 +1498,6 @@ type AdaptiveState
 
   let getAllProjectOptions () =
     async {
-      let! allFilesToFSharpProjectOptions = allFilesToFSharpProjectOptions |> AsyncAVal.forceAsync
-
       let! set =
         allFilesToFSharpProjectOptions
         |> AMap.toASetValues
@@ -1544,8 +1518,6 @@ type AdaptiveState
 
   let getProjectOptionsForFile (filePath: string<LocalPath>) =
     asyncAVal {
-      let! allFilesToFSharpProjectOptions = allFilesToFSharpProjectOptions
-
       match! allFilesToFSharpProjectOptions |> AMapAsync.tryFindA filePath with
       | Some(_, projs) -> return projs
       | None -> return Error $"Couldn't find project for {filePath}. Have you tried restoring your project/solution?"
@@ -1595,8 +1567,6 @@ type AdaptiveState
           ]
 
       use _ = fsacActivitySource.StartActivityForType(thisType, tags = tags)
-
-      use! _l = typecheckLocker.LockAsync()
 
 
       logger.info (
@@ -1742,7 +1712,7 @@ type AdaptiveState
           let! snap = x.FSharpProjectCompilerOptions
 
           return!
-            asyncEx {
+            asyncResult {
               let cts = getOpenFileTokenOrDefault file
               use linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ctok, cts)
 
@@ -1755,8 +1725,6 @@ type AdaptiveState
 
   let getParseResults filePath =
     asyncAVal {
-      let! allFilesParsed = allFilesParsed
-
       return!
         allFilesParsed
         |> AMapAsync.tryFindAndFlattenR $"No parse results found for {filePath}" filePath
@@ -1856,18 +1824,12 @@ type AdaptiveState
     |> AsyncAVal.forceAsync
 
   let allFilesToDeclarations =
-    asyncAVal {
-      let! allFilesParsed = allFilesParsed
 
-      return
         allFilesParsed
         |> AMap.map (fun _k v -> v |> AsyncAVal.mapResult (fun p _ -> p.GetNavigationItems().Declarations))
-    }
 
   let getAllDeclarations () =
     async {
-      let! allFilesToDeclarations = allFilesToDeclarations |> AsyncAVal.forceAsync
-
       let! results =
         allFilesToDeclarations
         |> AMap.force
@@ -1886,8 +1848,7 @@ type AdaptiveState
 
   let getDeclarations filename =
     allFilesToDeclarations
-    |> AsyncAVal.bind (fun a _ ->
-      AMapAsync.tryFindAndFlattenR $"Could not find getDeclarations for {filename}" filename a)
+    |>  AMapAsync.tryFindAndFlattenR $"Could not find getDeclarations for {filename}" filename
 
   let codeGenServer =
     { new ICodeGenerationService with
@@ -1930,7 +1891,7 @@ type AdaptiveState
 
   let getDependentProjectsOfProjects (ps: CompilerProjectOption list) =
     async {
-      let! projectSnapshot = forceLoadProjects ()
+      let projectSnapshot = forceLoadProjects ()
 
       let allDependents = System.Collections.Generic.HashSet<_>()
 
@@ -2364,7 +2325,7 @@ type AdaptiveState
 
             try
               let! _ =
-                bypassAdaptiveTypeCheck (file) (snap)
+                bypassAdaptiveTypeCheck file snap
                 |> Async.withCancellation joinedToken.Token
 
               ()
@@ -2497,7 +2458,11 @@ type AdaptiveState
   member x.GetTypeCheckResultsForFile(filePath, opts) = bypassAdaptiveTypeCheck filePath opts
 
   member x.GetTypeCheckResultsForFile(filePath) =
-    forceGetOpenFileTypeCheckResultsOrCheck filePath
+    asyncResult {
+      let! opts = forceGetProjectOptions filePath
+      let snap = opts.FSharpProjectCompilerOptions |> AVal.force
+      return! x.GetTypeCheckResultsForFile(filePath, snap)
+    }
 
   member x.GetFilesToProject() = getAllFilesToProjectOptionsSelected ()
 

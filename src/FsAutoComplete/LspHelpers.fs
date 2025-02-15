@@ -86,7 +86,11 @@ module Conversions =
       | Some(U2.C2 code) -> code |> Some
       | None -> None
 
-  type ITextDocumentIdentifier with
+  type TextDocumentIdentifier with
+
+    member doc.GetFilePath() = Path.FileUriToLocalPath doc.Uri
+
+  type VersionedTextDocumentIdentifier with
 
     member doc.GetFilePath() = Path.FileUriToLocalPath doc.Uri
 
@@ -159,7 +163,7 @@ module Conversions =
     [| yield! inner None topLevel.Declaration |> Option.toArray
        yield! topLevel.Nested |> Array.choose (inner (Some topLevel.Declaration.LogicalName)) |]
 
-  let applyQuery (query: string) (info: SymbolInformation) =
+  let applyQuery (query: string) (info: IBaseSymbolInformation) =
     match query.Split([| '.' |], StringSplitOptions.RemoveEmptyEntries) with
     | [||] -> false
     | [| fullName |] -> info.Name.StartsWith(fullName, StringComparison.Ordinal)
