@@ -85,7 +85,7 @@ module Server =
 
       match! server.Initialize p with
       | Ok _ ->
-        do! server.Initialized()
+        do! server.Initialized(box ())
 
         return
           { RootPath = path

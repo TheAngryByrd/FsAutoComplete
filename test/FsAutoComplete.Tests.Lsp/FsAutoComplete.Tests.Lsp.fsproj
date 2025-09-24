@@ -46,6 +46,11 @@
     <Compile Include="Utils/CursorbasedTests.fs" />
     <Compile Include="Utils/CursorbasedTests.Tests.fsi" />
     <Compile Include="Utils/CursorbasedTests.Tests.fs" />
+    <Compile Include="Utils/ProcessLspServer.fsi" />
+    <Compile Include="Utils/ProcessLspServer.fs" />
+    <Compile Include="Utils/TrueProcessLspServer.fs" />
+    <Compile Include="Utils/ProcessServer.fsi" />
+    <Compile Include="Utils/ProcessServer.fs" />
     <Compile Include="*Tests.fs" Exclude="Helpers.fs;Program.fs" />
     <Compile Include="CodeFixTests/Utils.fs" />
     <Compile Include="CodeFixTests/*.fs" Exclude="CodeFixTests/Utils.fs;CodeFixTests/Tests.fs" />

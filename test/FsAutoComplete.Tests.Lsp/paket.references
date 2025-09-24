@@ -14,6 +14,7 @@ Destructurama.FSharp
 Serilog.Sinks.Async
 Serilog.Sinks.Console
 OpenTelemetry.Exporter.OpenTelemetryProtocol
+StreamJsonRpc
 
 Microsoft.Build copy_local: false
 Microsoft.Build.Framework copy_local: false

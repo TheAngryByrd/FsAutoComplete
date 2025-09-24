@@ -175,7 +175,7 @@ module Snapshots =
     }
 
   let rec private createReferences
-    (cachedSnapshots)
+    (cachedSnapshots: Dictionary<string<LocalPath>,aval<FSharpProjectSnapshot>>)
     (inMemorySourceFiles: amap<string<LocalPath>, aval<VolatileFile>>)
     (sourceTextFactory: aval<ISourceTextFactory>)
     (loadedProjectsA: amap<string<LocalPath>, ProjectOptions>)

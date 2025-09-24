@@ -617,7 +617,7 @@ let serverInitialize path (config: FSharpConfigDto) createServer =
 
     match result with
     | Result.Ok _res ->
-      do! server.Initialized()
+      do! server.Initialized(box ())
       return (server, clientNotifications)
     | Result.Error _e -> return failwith "Initialization failed"
   }

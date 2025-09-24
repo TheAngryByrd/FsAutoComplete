@@ -57,7 +57,7 @@ let initTests createServer =
 
       match result with
       | Result.Ok res ->
-        do! server.Initialized()
+        do! server.Initialized(box ())
 
         Expect.equal
           res.Capabilities.CodeActionProvider
