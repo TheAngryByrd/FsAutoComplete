@@ -12,15 +12,11 @@
     <PackageVersion Include="Ionide.Analyzers" Version="0.14.10" />
     <PackageVersion Include="Ionide.KeepAChangelog.Tasks" Version="0.3.1" />
     <PackageVersion Include="Ionide.LanguageServerProtocol" Version="0.7" />
-    <PackageVersion Include="Ionide.ProjInfo" Version="0.73" />
-    <PackageVersion Include="Ionide.ProjInfo.FCS" Version="0.73" />
     <PackageVersion Include="Ionide.ProjInfo.ProjectSystem" Version="0.73" />
     
     <!-- F# Analysis and Linting -->
     <PackageVersion Include="FSharp.Analyzers.Build" Version="0.3" />
     <PackageVersion Include="FSharp.Analyzers.SDK" Version="0.34.1" />
-    <PackageVersion Include="FSharpLint.Core" Version="0.23" />
-    <PackageVersion Include="FParsec" Version="1.1.1" />
     
     <!-- Code formatting -->
     <PackageVersion Include="Fantomas.Client" Version="0.9.1" />
@@ -28,60 +24,30 @@
     <!-- F# utility libraries -->
     <PackageVersion Include="FSharp.UMX" Version="1.1" />
     <PackageVersion Include="FSharp.Data.Adaptive" Version="1.2.18" />
-    <PackageVersion Include="FSharp.Formatting" Version="14.0.1" />
-    <PackageVersion Include="FSharp.Control.AsyncSeq" Version="3.2.1" />
     <PackageVersion Include="Fsharp.Control.Reactive" Version="5.0.5" />
     <PackageVersion Include="FSharpx.Async" Version="1.14.1" />
-    <PackageVersion Include="FsToolkit.ErrorHandling" Version="4.18" />
     <PackageVersion Include="FsToolkit.ErrorHandling.TaskResult" Version="4.18" />
     <PackageVersion Include="IcedTasks" Version="0.11.7" />
-    <PackageVersion Include="Ply" Version="0.3.1" />
     
     <!-- Microsoft Build packages -->
     <PackageVersion Include="Microsoft.Build" Version="17.12.6" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="17.12.6" />
     <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="17.12.6" />
     <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="17.12.6" />
-    <PackageVersion Include="Microsoft.Build.Locator" Version="1.7.8" />
-    <PackageVersion Include="Microsoft.NET.StringTools" Version="17.12.6" />
     
     <!-- Microsoft CodeAnalysis -->
     <PackageVersion Include="Microsoft.CodeAnalysis" Version="4.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Common" Version="4.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="4.11" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.11" />
     
     <!-- Microsoft Extensions -->
-    <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="9.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Abstractions" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Primitives" Version="9.0.1" />
     
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12" />
     <PackageVersion Include="Microsoft.TestPlatform.ObjectModel" Version="17.12" />
-    <PackageVersion Include="Microsoft.TestPlatform.TestHost" Version="17.12" />
     <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="17.13" />
-    <PackageVersion Include="Expecto" Version="10.2.3" />
     <PackageVersion Include="Expecto.Diff" Version="10.2.1" />
     <PackageVersion Include="YoloDev.Expecto.TestSdk" Version="0.14.3" />
-    <PackageVersion Include="AltCover" Version="9.0.1" />
     <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
-    <PackageVersion Include="Microsoft.CodeCoverage" Version="17.12" />
     
     <!-- Logging -->
     <PackageVersion Include="Serilog" Version="4.1" />
@@ -92,9 +58,6 @@
     <PackageVersion Include="Destructurama.FSharp" Version="2.0" />
     
     <!-- OpenTelemetry -->
-    <PackageVersion Include="OpenTelemetry" Version="1.10" />
-    <PackageVersion Include="OpenTelemetry.Api" Version="1.10" />
-    <PackageVersion Include="OpenTelemetry.Api.ProviderBuilderExtensions" Version="1.10" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.10" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.9" />
     
@@ -102,159 +65,19 @@
     <PackageVersion Include="CliWrap" Version="3.6.7" />
     <PackageVersion Include="System.CommandLine" Version="2.0" />
     <PackageVersion Include="ICSharpCode.Decompiler" Version="8.2.0.7535" />
-    <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
     <PackageVersion Include="LinkDotNet.StringBuilder" Version="1.18" />
     <PackageVersion Include="CommunityToolkit.HighPerformance" Version="8.3.2" />
-    <PackageVersion Include="MessagePack" Version="2.5.192" />
-    <PackageVersion Include="MessagePack.Annotations" Version="2.5.192" />
-    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageVersion Include="StreamJsonRpc" Version="2.20.20" />
-    <PackageVersion Include="SemanticVersioning" Version="2.0.2" />
-    <PackageVersion Include="Nerdbank.Streams" Version="2.11.79" />
-    <PackageVersion Include="Humanizer.Core" Version="2.14.1" />
-    <PackageVersion Include="McMaster.NETCore.Plugins" Version="2.0" />
-    
-    <!-- Build tools -->
-    <PackageVersion Include="Dotnet.ReproducibleBuilds" Version="1.2.25" />
-    
-    <!-- Microsoft VisualStudio -->
-    <PackageVersion Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.28" />
-    <PackageVersion Include="Microsoft.VisualStudio.Threading" Version="17.12.19" />
-    <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.12.19" />
-    <PackageVersion Include="Microsoft.VisualStudio.Validation" Version="17.8.8" />
-    
-    <!-- Diagnostics -->
-    <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.553101" />
-    <PackageVersion Include="Microsoft.Diagnostics.Runtime" Version="3.1.512801" />
-    <PackageVersion Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.18" />
     
     <!-- Benchmarking -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.14" />
-    <PackageVersion Include="BenchmarkDotNet.Annotations" Version="0.14" />
-    <PackageVersion Include="Perfolizer" Version="0.3.17" />
-    <PackageVersion Include="CommandLineParser" Version="2.9.1" />
-    <PackageVersion Include="Iced" Version="1.21" />
-    <PackageVersion Include="Gee.External.Capstone" Version="2.3" />
-    
-    <!-- Grpc -->
-    <PackageVersion Include="Grpc" Version="2.46.6" />
-    <PackageVersion Include="Grpc.Core" Version="2.46.6" />
-    <PackageVersion Include="Grpc.Core.Api" Version="2.66" />
-    <PackageVersion Include="Grpc.Net.Client" Version="2.66" />
-    <PackageVersion Include="Grpc.Net.Common" Version="2.66" />
-    <PackageVersion Include="Google.Protobuf" Version="3.28.3" />
-    
-    <!-- System packages -->
-    <PackageVersion Include="System.Buffers" Version="4.6" />
-    <PackageVersion Include="System.CodeDom" Version="8.0" />
-    <PackageVersion Include="System.Collections.Immutable" Version="9.0.1" />
-    <PackageVersion Include="System.Composition" Version="9.0.1" />
-    <PackageVersion Include="System.Composition.AttributedModel" Version="9.0.1" />
-    <PackageVersion Include="System.Composition.Convention" Version="9.0.1" />
-    <PackageVersion Include="System.Composition.Hosting" Version="9.0.1" />
-    <PackageVersion Include="System.Composition.Runtime" Version="9.0.1" />
-    <PackageVersion Include="System.Composition.TypedParts" Version="9.0.1" />
-    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.1" />
-    <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="9.0.1" />
-    <PackageVersion Include="System.Diagnostics.EventLog" Version="9.0.1" />
-    <PackageVersion Include="System.Formats.Asn1" Version="9.0.1" />
-    <PackageVersion Include="System.Formats.Nrbf" Version="9.0.1" />
-    <PackageVersion Include="System.IO.Pipelines" Version="9.0.1" />
-    <PackageVersion Include="System.Management" Version="8.0" />
-    <PackageVersion Include="System.Memory" Version="4.6" />
-    <PackageVersion Include="System.Net.Http" Version="4.3.4" />
-    <PackageVersion Include="System.Numerics.Vectors" Version="4.6" />
-    <PackageVersion Include="System.Reactive" Version="5.0" />
-    <PackageVersion Include="System.Reflection.Emit" Version="4.7" />
-    <PackageVersion Include="System.Reflection.Emit.Lightweight" Version="4.7" />
-    <PackageVersion Include="System.Reflection.Metadata" Version="9.0.1" />
-    <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="9.0.1" />
-    <PackageVersion Include="System.Resources.Extensions" Version="9.0.1" />
-    <PackageVersion Include="System.Runtime.CompilerServices.Unsafe" Version="6.1" />
-    <PackageVersion Include="System.Security.AccessControl" Version="6.0.1" />
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.1" />
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.1" />
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="9.0.1" />
-    <PackageVersion Include="System.Security.Principal.Windows" Version="5.0" />
-    <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.1" />
-    <PackageVersion Include="System.Text.Encodings.Web" Version="9.0.1" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.1" />
-    <PackageVersion Include="System.Text.RegularExpressions" Version="4.3.1" />
-    <PackageVersion Include="System.Threading.Channels" Version="9.0.1" />
-    <PackageVersion Include="System.Threading.Tasks.Dataflow" Version="9.0.1" />
-    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6" />
     
     <!-- BCL packages -->
     <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Bcl.Cryptography" Version="9.0.1" />
-    <PackageVersion Include="Microsoft.Bcl.HashCode" Version="6.0" />
     
     <!-- NuGet -->
-    <PackageVersion Include="Nuget.Frameworks" Version="6.12.1" />
+    <PackageVersion Include="NuGet.Frameworks" Version="6.12.1" />
     
     <!-- Other -->
-    <PackageVersion Include="Microsoft.DotNet.PlatformAbstractions" Version="3.1.6" />
-    <PackageVersion Include="Microsoft.Win32.Registry" Version="5.0" />
-    <PackageVersion Include="DiffPlex" Version="1.7.2" />
     <PackageVersion Include="NETStandard.Library" Version="2.0.3" />
-    <PackageVersion Include="Microsoft.NETCore.Platforms" Version="7.0.4" />
-    <PackageVersion Include="Microsoft.NETCore.Targets" Version="5.0" />
-    
-    <!-- Legacy System packages (for netstandard2.0/2.1 compatibility) -->
-    <PackageVersion Include="System.Collections" Version="4.3" />
-    <PackageVersion Include="System.Collections.Concurrent" Version="4.3" />
-    <PackageVersion Include="System.ComponentModel.Annotations" Version="5.0" />
-    <PackageVersion Include="System.Diagnostics.Debug" Version="4.3" />
-    <PackageVersion Include="System.Diagnostics.Tracing" Version="4.3" />
-    <PackageVersion Include="System.Globalization" Version="4.3" />
-    <PackageVersion Include="System.Globalization.Calendars" Version="4.3" />
-    <PackageVersion Include="System.Globalization.Extensions" Version="4.3" />
-    <PackageVersion Include="System.IO" Version="4.3" />
-    <PackageVersion Include="System.IO.FileSystem" Version="4.3" />
-    <PackageVersion Include="System.IO.FileSystem.Primitives" Version="4.3" />
-    <PackageVersion Include="System.Linq" Version="4.3" />
-    <PackageVersion Include="System.Net.Primitives" Version="4.3.1" />
-    <PackageVersion Include="System.Reflection" Version="4.3" />
-    <PackageVersion Include="System.Reflection.Emit.ILGeneration" Version="4.7" />
-    <PackageVersion Include="System.Reflection.Primitives" Version="4.3" />
-    <PackageVersion Include="System.Reflection.TypeExtensions" Version="4.7" />
-    <PackageVersion Include="System.Resources.ResourceManager" Version="4.3" />
-    <PackageVersion Include="System.Runtime" Version="4.3.1" />
-    <PackageVersion Include="System.Runtime.Extensions" Version="4.3.1" />
-    <PackageVersion Include="System.Runtime.Handles" Version="4.3" />
-    <PackageVersion Include="System.Runtime.InteropServices" Version="4.3" />
-    <PackageVersion Include="System.Runtime.Numerics" Version="4.3" />
-    <PackageVersion Include="System.Security.Cryptography.Algorithms" Version="4.3.1" />
-    <PackageVersion Include="System.Security.Cryptography.Cng" Version="5.0" />
-    <PackageVersion Include="System.Security.Cryptography.Csp" Version="4.3" />
-    <PackageVersion Include="System.Security.Cryptography.Encoding" Version="4.3" />
-    <PackageVersion Include="System.Security.Cryptography.OpenSsl" Version="5.0" />
-    <PackageVersion Include="System.Security.Cryptography.Primitives" Version="4.3" />
-    <PackageVersion Include="System.Security.Cryptography.X509Certificates" Version="4.3.2" />
-    <PackageVersion Include="System.Text.Encoding" Version="4.3" />
-    <PackageVersion Include="System.Threading" Version="4.3" />
-    <PackageVersion Include="System.Threading.Tasks" Version="4.3" />
-    
-    <!-- Runtime packages -->
-    <PackageVersion Include="runtime.native.System" Version="4.3.1" />
-    <PackageVersion Include="runtime.native.System.Net.Http" Version="4.3.1" />
-    <PackageVersion Include="runtime.native.System.Security.Cryptography.Apple" Version="4.3.1" />
-    <PackageVersion Include="runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.debian.8-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.debian.9-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.fedora.23-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.fedora.24-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.fedora.27-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.fedora.28-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.opensuse.13.2-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.opensuse.42.1-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.opensuse.42.3-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.osx.10.10-x64.runtime.native.System.Security.Cryptography.Apple" Version="4.3.1" />
-    <PackageVersion Include="runtime.osx.10.10-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.rhel.7-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.ubuntu.14.04-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.ubuntu.16.04-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.ubuntu.16.10-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
-    <PackageVersion Include="runtime.ubuntu.18.04-x64.runtime.native.System.Security.Cryptography.OpenSsl" Version="4.3.3" />
   </ItemGroup>
 </Project>
