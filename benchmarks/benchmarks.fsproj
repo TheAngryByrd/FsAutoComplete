@@ -13,5 +13,11 @@
   <ItemGroup>
     <ProjectReference Include="..\src\FsAutoComplete\FsAutoComplete.fsproj" />
   </ItemGroup>
-  <Import Project="..\.paket\Paket.Restore.targets" />
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Microsoft.CodeAnalysis" />
+    <PackageReference Include="FSharp.Data.Adaptive" />
+    <PackageReference Include="Ionide.LanguageServerProtocol" />
+    <PackageReference Include="FSharp.UMX" />
+  </ItemGroup>
 </Project>

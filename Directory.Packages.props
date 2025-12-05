@@ -1,0 +1,83 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <!-- Core F# packages -->
+    <PackageVersion Include="FSharp.Core" Version="10.0.100" />
+    <PackageVersion Include="FSharp.Compiler.Service" Version="43.10.100" />
+    
+    <!-- Ionide packages -->
+    <PackageVersion Include="Ionide.Analyzers" Version="0.14.10" />
+    <PackageVersion Include="Ionide.KeepAChangelog.Tasks" Version="0.3.1" />
+    <PackageVersion Include="Ionide.LanguageServerProtocol" Version="0.7" />
+    <PackageVersion Include="Ionide.ProjInfo.ProjectSystem" Version="0.73" />
+    
+    <!-- F# Analysis and Linting -->
+    <PackageVersion Include="FSharp.Analyzers.Build" Version="0.3" />
+    <PackageVersion Include="FSharp.Analyzers.SDK" Version="0.34.1" />
+    
+    <!-- Code formatting -->
+    <PackageVersion Include="Fantomas.Client" Version="0.9.1" />
+    
+    <!-- F# utility libraries -->
+    <PackageVersion Include="FSharp.UMX" Version="1.1" />
+    <PackageVersion Include="FSharp.Data.Adaptive" Version="1.2.18" />
+    <PackageVersion Include="Fsharp.Control.Reactive" Version="5.0.5" />
+    <PackageVersion Include="FSharpx.Async" Version="1.14.1" />
+    <PackageVersion Include="FsToolkit.ErrorHandling.TaskResult" Version="4.18" />
+    <PackageVersion Include="IcedTasks" Version="0.11.7" />
+    
+    <!-- Microsoft Build packages -->
+    <PackageVersion Include="Microsoft.Build" Version="17.12.6" />
+    <PackageVersion Include="Microsoft.Build.Framework" Version="17.12.6" />
+    <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="17.12.6" />
+    <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="17.12.6" />
+    
+    <!-- Microsoft CodeAnalysis -->
+    <PackageVersion Include="Microsoft.CodeAnalysis" Version="4.11" />
+    
+    <!-- Microsoft Extensions -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.1" />
+    
+    <!-- Testing -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12" />
+    <PackageVersion Include="Microsoft.TestPlatform.ObjectModel" Version="17.12" />
+    <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="17.13" />
+    <PackageVersion Include="Expecto.Diff" Version="10.2.1" />
+    <PackageVersion Include="YoloDev.Expecto.TestSdk" Version="0.14.3" />
+    <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
+    
+    <!-- Logging -->
+    <PackageVersion Include="Serilog" Version="4.1" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="8.0" />
+    <PackageVersion Include="Serilog.Sinks.Async" Version="2.1" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="6.0" />
+    <PackageVersion Include="Destructurama.FSharp" Version="2.0" />
+    
+    <!-- OpenTelemetry -->
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.10" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.9" />
+    
+    <!-- Utilities -->
+    <PackageVersion Include="CliWrap" Version="3.6.7" />
+    <PackageVersion Include="System.CommandLine" Version="2.0" />
+    <PackageVersion Include="ICSharpCode.Decompiler" Version="8.2.0.7535" />
+    <PackageVersion Include="LinkDotNet.StringBuilder" Version="1.18" />
+    <PackageVersion Include="CommunityToolkit.HighPerformance" Version="8.3.2" />
+    
+    <!-- Benchmarking -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.14" />
+    
+    <!-- BCL packages -->
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.1" />
+    
+    <!-- NuGet -->
+    <PackageVersion Include="NuGet.Frameworks" Version="6.12.1" />
+    
+    <!-- Other -->
+    <PackageVersion Include="NETStandard.Library" Version="2.0.3" />
+  </ItemGroup>
+</Project>

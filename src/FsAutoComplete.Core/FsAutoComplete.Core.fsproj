@@ -67,5 +67,27 @@
     <Compile Include="SymbolLocation.fs" />
     <Compile Include="Commands.fs" />
   </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="ICSharpCode.Decompiler" />
+    <PackageReference Include="FSharp.UMX" />
+    <PackageReference Include="FsToolkit.ErrorHandling.TaskResult" />
+    <PackageReference Include="Fantomas.Client" />
+    <PackageReference Include="FSharp.Data.Adaptive" />
+    <PackageReference Include="IcedTasks" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" ExcludeAssets="runtime" />
+    <PackageReference Include="Ionide.LanguageServerProtocol" />
+    <PackageReference Include="Ionide.KeepAChangelog.Tasks" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="Microsoft.CodeAnalysis" />
+    <PackageReference Include="LinkDotNet.StringBuilder" />
+    <PackageReference Include="CommunityToolkit.HighPerformance" />
+    <PackageReference Include="Ionide.ProjInfo.ProjectSystem" />
+    <PackageReference Include="FSharp.Analyzers.SDK" />
+    <PackageReference Include="Ionide.Analyzers" />
+    <PackageReference Include="FSharp.Analyzers.Build" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+    <PackageReference Include="Microsoft.TestPlatform.ObjectModel" />
+    <PackageReference Include="Microsoft.TestPlatform.TranslationLayer" />
+  </ItemGroup>
 </Project>
