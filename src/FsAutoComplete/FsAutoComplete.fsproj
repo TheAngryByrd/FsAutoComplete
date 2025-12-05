@@ -72,5 +72,19 @@
         Include="@(ReferenceCopyLocalPaths -> WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
     </ItemGroup>
   </Target>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="CliWrap" />
+    <PackageReference Include="Destructurama.FSharp" />
+    <PackageReference Include="Fantomas.Client" />
+    <PackageReference Include="Ionide.KeepAChangelog.Tasks" />
+    <PackageReference Include="Serilog.Sinks.Async" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="FSharp.Data.Adaptive" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+    <PackageReference Include="FSharp.Analyzers.Build" />
+  </ItemGroup>
 </Project>

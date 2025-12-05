@@ -8,5 +8,10 @@
     <Compile Include="FsLibLog.fs" />
     <Compile Include="FsOpenTelemetry.fs" />
   </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Ionide.KeepAChangelog.Tasks" />
+    <PackageReference Include="Ionide.Analyzers" />
+    <PackageReference Include="FSharp.Analyzers.Build" />
+  </ItemGroup>
 </Project>

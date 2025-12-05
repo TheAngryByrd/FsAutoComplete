@@ -59,5 +59,26 @@
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Copy SourceFiles="$([System.IO.Directory]::GetParent($(BundledRuntimeIdentifierGraphFile)))\NuGet.Frameworks.dll" DestinationFolder="$(OutputPath)" ContinueOnError="false" />
   </Target>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="FSharp.Compiler.Service" />
+    <PackageReference Include="Fsharp.Control.Reactive" />
+    <PackageReference Include="FSharpx.Async" />
+    <PackageReference Include="Expecto.Diff" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="YoloDev.Expecto.TestSdk" />
+    <PackageReference Include="GitHubActionsTestLogger" />
+    <PackageReference Include="CliWrap" />
+    <PackageReference Include="FSharp.Data.Adaptive" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Destructurama.FSharp" />
+    <PackageReference Include="Serilog.Sinks.Async" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" ExcludeAssets="runtime" />
+    <PackageReference Include="NuGet.Frameworks" ExcludeAssets="runtime" />
+  </ItemGroup>
 </Project>
