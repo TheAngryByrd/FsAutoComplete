@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);FS0042</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="FsLibLog.fs" />
