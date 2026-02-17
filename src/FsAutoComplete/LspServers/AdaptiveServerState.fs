@@ -1817,7 +1817,7 @@ type AdaptiveState
             opts,
             shouldCache = shouldCache
           )
-          |> Async.withCancellation progressCt
+        |> Async.withCancellation progressCt
 
 
       let! ct = Async.CancellationToken
