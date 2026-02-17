@@ -12,6 +12,7 @@ open FsAutoComplete.Tests.ScriptTest
 open FsAutoComplete.Tests.ExtensionsTests
 open FsAutoComplete.Tests.InteractiveDirectivesTests
 open FsAutoComplete.Tests.Lsp.CoreUtilsTests
+open FsAutoComplete.Tests.SharedTypecheckProgressReporterTests
 open FsAutoComplete.Tests.CallHierarchy
 open Ionide.ProjInfo
 open System.Threading
@@ -47,17 +48,22 @@ let (|EqIC|_|) (a: string) (b: string) =
 let loaders =
   match getEnvVarAsStr "USE_WORKSPACE_LOADER" with
   | Some(EqIC "WorkspaceLoader") ->
-    [ "Ionide WorkspaceLoader",
-      (fun toolpath -> WorkspaceLoader.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties)) ]
-  | Some(EqIC "ProjectGraph") ->
-    [ "MSBuild Project Graph WorkspaceLoader",
-      (fun toolpath ->
-        WorkspaceLoaderViaProjectGraph.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties)) ]
-  | _ ->
-    [ "Ionide WorkspaceLoader",
+    [
+      "Ionide WorkspaceLoader",
       (fun toolpath -> WorkspaceLoader.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties))
-      // "MSBuild Project Graph WorkspaceLoader", (fun toolpath -> WorkspaceLoaderViaProjectGraph.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties))
-      ]
+    ]
+  | Some(EqIC "ProjectGraph") ->
+    [
+      "MSBuild Project Graph WorkspaceLoader",
+      (fun toolpath ->
+        WorkspaceLoaderViaProjectGraph.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties))
+    ]
+  | _ ->
+    [
+      "Ionide WorkspaceLoader",
+      (fun toolpath -> WorkspaceLoader.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties))
+    // "MSBuild Project Graph WorkspaceLoader", (fun toolpath -> WorkspaceLoaderViaProjectGraph.Create(toolpath, FsAutoComplete.Core.ProjectLoader.globalProperties))
+    ]
 
 
 let adaptiveLspServerFactory toolsPath workspaceLoaderFactory sourceTextFactory =
@@ -80,14 +86,17 @@ let lspTests =
   testSequenced
   <| testList
     "lsp"
-    [ for (loaderName, workspaceLoaderFactory) in loaders do
+    [
+      for (loaderName, workspaceLoaderFactory) in loaders do
 
         testList
           $"{loaderName}"
-          [ for (compilerName, useTransparentCompiler) in compilers do
+          [
+            for (compilerName, useTransparentCompiler) in compilers do
               testList
                 $"{compilerName}"
-                [ Templates.tests ()
+                [
+                  Templates.tests ()
                   let createServer () =
                     adaptiveLspServerFactory toolsPath workspaceLoaderFactory sourceTextFactory useTransparentCompiler
 
@@ -139,15 +148,21 @@ let lspTests =
                   CallHierarchy.tests createServer
                   diagnosticsTest createServer
 
-                  TestExplorer.tests createServer ] ] ]
+                  TestExplorer.tests createServer
+                ]
+          ]
+    ]
 
 /// Tests that do not require a LSP server
 let generalTests =
   testList
     "general"
-    [ testList (nameof (Utils)) [ Utils.Tests.Utils.tests; Utils.Tests.TextEdit.tests ]
+    [
+      testList (nameof (Utils)) [ Utils.Tests.Utils.tests; Utils.Tests.TextEdit.tests ]
+      SharedTypecheckProgressReporterTests.tests
       InlayHintTests.explicitTypeInfoTests sourceTextFactory
-      FindReferences.tryFixupRangeTests sourceTextFactory ]
+      FindReferences.tryFixupRangeTests sourceTextFactory
+    ]
 
 [<Tests>]
 let tests =
@@ -242,7 +257,12 @@ let main args =
     |> Array.tryPick (function
       | [| "--loader"; "ionide" |] as args -> Some(args, [ "Ionide WorkspaceLoader", WorkspaceLoader.Create ])
       | [| "--loader"; "graph" |] as args ->
-        Some(args, [ "MSBuild Project Graph WorkspaceLoader", WorkspaceLoaderViaProjectGraph.Create ])
+        Some(
+          args,
+          [
+            "MSBuild Project Graph WorkspaceLoader", WorkspaceLoaderViaProjectGraph.Create
+          ]
+        )
       | _ -> None)
     |> Option.defaultValue ([||], loaders)
 
@@ -256,9 +276,11 @@ let main args =
       .Destructure.FSharpTypes()
       .Destructure.ByTransforming<FSharp.Compiler.Text.Range>(fun r ->
         box
-          {| FileName = r.FileName
-             Start = r.Start
-             End = r.End |})
+          {|
+            FileName = r.FileName
+            Start = r.Start
+            End = r.End
+          |})
       .Destructure.ByTransforming<FSharp.Compiler.Text.Position>(fun r -> box {| Line = r.Line; Column = r.Column |})
       .Destructure.ByTransforming<Newtonsoft.Json.Linq.JToken>(fun tok -> tok.ToString() |> box)
       .Destructure.ByTransforming<System.IO.DirectoryInfo>(fun di -> box di.FullName)
@@ -281,9 +303,11 @@ let main args =
   use activitySource = new ActivitySource(serviceName)
 
   let cliArgs =
-    [ CLIArguments.Printer(Expecto.Impl.TestPrinters.summaryWithLocationPrinter defaultConfig.printer)
+    [
+      CLIArguments.Printer(Expecto.Impl.TestPrinters.summaryWithLocationPrinter defaultConfig.printer)
       CLIArguments.Verbosity Expecto.Logging.LogLevel.Info
-      CLIArguments.Parallel ]
+      CLIArguments.Parallel
+    ]
   // let trace = traceProvider.GetTracer("FsAutoComplete.Tests.Lsp")
   // use span =  trace.StartActiveSpan("runTests", SpanKind.Internal)
   use span = activitySource.StartActivity("runTests")

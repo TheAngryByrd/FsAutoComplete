@@ -636,6 +636,7 @@ type AdaptiveState
         try
           let fileName = Path.GetFileName(UMX.untag file)
           use! _progress = analyzerProgressReporter.Begin($"External analyzers - {fileName}")
+          let! progressCt = analyzerProgressReporter.GetCancellationToken()
 
           Loggers.analyzers.info (
             Log.setMessage "begin analysis of {file}"
@@ -685,6 +686,7 @@ type AdaptiveState
                 analyzerOptions,
                 analyzerPredicate
               )
+              |> Async.withCancellation progressCt
 
             let! ct = Async.CancellationToken
             notifications.Trigger(NotificationEvent.AnalyzerMessage(res, file, volatileFile.Version), ct)

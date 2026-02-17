@@ -108,11 +108,13 @@ type RepoPathSegment
 type NormalizedRepoPathSegment
 
 type Document =
-  { FullName: string<LocalPath>
+  {
+    FullName: string<LocalPath>
     LineCount: int
     GetText: unit -> string
     GetLineText0: int -> string
-    GetLineText1: int -> string }
+    GetLineText1: int -> string
+  }
 
 
 /// <summary>
@@ -172,7 +174,8 @@ let projectOptionsToParseOptions (checkOptions: FSharpProjectOptions) =
     | x -> x
 
   { FSharpParsingOptions.Default with
-      SourceFiles = files }
+      SourceFiles = files
+  }
 
 
 [<RequireQualifiedAccess>]
@@ -238,19 +241,16 @@ module Async =
       // Start the workflow using a provided cancellation token
       Async.StartWithContinuations(work, cont, econt, ccont, cancellationToken = cancellationToken))
 
-  /// <summary>Creates an asynchronous computation that executes all the given asynchronous computations, using 75% of the Environment.ProcessorCount</summary>
-  /// <param name="computations">A sequence of distinct computations to be parallelized.</param>
-  let parallel75 computations =
+
+  let private parallelOfPercentage percentage computations =
     let maxConcurrency =
-      Math.Max(1.0, Math.Floor((float System.Environment.ProcessorCount) * 0.75))
+      Math.Max(1.0, Math.Floor((float System.Environment.ProcessorCount) * percentage))
 
     Async.Parallel(computations, int maxConcurrency)
 
-  let parallel25 computations =
-    let maxConcurrency =
-      Math.Max(1.0, Math.Floor((float System.Environment.ProcessorCount) * 0.25))
-
-    Async.Parallel(computations, int maxConcurrency)
+  let parallel75 computations = parallelOfPercentage 0.75 computations
+  let parallel50 computations = parallelOfPercentage 0.50 computations
+  let parallel25 computations = parallelOfPercentage 0.25 computations
 
   [<RequireQualifiedAccess>]
   module Array =
@@ -468,16 +468,18 @@ module String =
   let getLines (str: string) =
     use reader = new StringReader(str)
 
-    [| let line = ref (reader.ReadLine())
+    [|
+      let line = ref (reader.ReadLine())
 
-       while not (isNull (line.Value)) do
-         yield line.Value
-         line.Value <- reader.ReadLine()
+      while not (isNull (line.Value)) do
+        yield line.Value
+        line.Value <- reader.ReadLine()
 
-       if str.EndsWith("\n", StringComparison.Ordinal) then
-         // last trailing space not returned
-         // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
-         yield String.Empty |]
+      if str.EndsWith("\n", StringComparison.Ordinal) then
+        // last trailing space not returned
+        // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
+        yield String.Empty
+    |]
 
   type SplitResult =
     | NoMatch
@@ -756,8 +758,10 @@ module Version =
       | [| v |] -> v, ""
       | _ -> "", ""
 
-    { VersionInfo.Version = version
-      GitSha = sha }
+    {
+      VersionInfo.Version = version
+      GitSha = sha
+    }
 
 //source: https://nbevans.wordpress.com/2014/08/09/a-simple-stereotypical-javascript-like-debounce-service-for-f/
 type Debounce<'a>(timeout, fn) as x =
@@ -881,12 +885,14 @@ module Tracing =
     interface IActivityTracingStrategy with
       member this.ApplyInboundActivity(request: Protocol.JsonRpcRequest) : IDisposable =
         let tags =
-          [ "rpc.system", box "jsonrpc"
+          [
+            "rpc.system", box "jsonrpc"
             "rpc.jsonrpc.is_notification", box request.IsNotification
             "rpc.jsonrpc.is_response_expected", box request.IsResponseExpected
             "rpc.jsonrpc.version", box request.Version
             "rpc.jsonrpc.request_id", box request.RequestId
-            "rpc.method", box request.Method ]
+            "rpc.method", box request.Method
+          ]
           |> Seq.map KeyValuePair
 
         let activity =
