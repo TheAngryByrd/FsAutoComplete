@@ -183,8 +183,7 @@ type ServerProgressReport(lspClient: FSharpLspClient, ?token: ProgressToken, ?ca
 /// into a single LSP progress notification. Instead of creating a new Begin/End cycle per file,
 /// this maintains one notification that updates its message with the current file being checked.
 /// </summary>
-type SharedTypecheckProgressReporter
-  (title: string, createReport: unit -> ServerProgressReport) =
+type SharedTypecheckProgressReporter(title: string, createReport: unit -> ServerProgressReport) =
 
   let locker = new SemaphoreSlim(1, 1)
   /// Display-only set of short file names currently being checked
